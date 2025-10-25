@@ -1,5 +1,6 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 
 interface StepperContextValue {
   currentStep: number
@@ -25,11 +26,14 @@ export function StepperItem({
   const context = React.useContext(StepperContext)
   const currentStep = context?.currentStep ?? 1
   
-  const state = step < currentStep ? "completed" : step === currentStep ? "active" : "inactive"
+  const state = step < currentStep ? "completed" : step === currentStep ? "5" : "0"
   
   return (
     <div className={cn("relative flex w-full items-start gap-6 group", className)} data-state={state} {...props}>
       {children}
+      <Alert className="absolute top-0 right-0 w-24 px-2.5 py-1.5 border-red-200 bg-red-50">
+        <AlertDescription>Risk: +{state}</AlertDescription>
+      </Alert>
     </div>
   )
 }

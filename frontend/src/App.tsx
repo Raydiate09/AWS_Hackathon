@@ -41,18 +41,28 @@ function StepperDemo() {
   const steps = [
     {
       step: 1,
-      title: "Your details",
-      description: "Provide your name and email address. We will use this information to create your account",
+      title: "Pickup at SFO",
+      description: "Package collected from San Francisco International Airport cargo terminal",
     },
     {
       step: 2,
-      title: "Company details",
-      description: "A few details about your company will help us personalize your experience",
+      title: "Depart SFO Area",
+      description: "Leaving airport grounds and entering Highway 101 northbound",
     },
     {
       step: 3,
-      title: "Invite your team",
-      description: "Start collaborating with your team by inviting them to join your account. You can skip this step and invite them later",
+      title: "San Mateo to Palo Alto",
+      description: "Traveling through San Mateo and Palo Alto areas via US-101",
+    },
+    {
+      step: 4,
+      title: "Mountain View Transit",
+      description: "Passing through Mountain View and Sunnyvale on route to Santa Clara",
+    },
+    {
+      step: 5,
+      title: "Delivery at SCU",
+      description: "Final destination reached at Santa Clara University campus",
     },
   ];
 
@@ -63,46 +73,48 @@ function StepperDemo() {
   };
 
   return (
-    <Stepper className="mx-auto w-full max-w-md">
-      {steps.map((step, index) => {
-        const state = getStepState(step.step);
-        const isLastStep = index === steps.length - 1;
+    <div className="relative">
+      <Stepper className="mx-auto w-[56rem]">
+        {steps.map((step, index) => {
+          const state = getStepState(step.step);
+          const isLastStep = index === steps.length - 1;
 
-        return (
-          <StepperItem key={step.step} step={step.step}>
-            {!isLastStep && <StepperSeparator />}
+          return (
+            <StepperItem key={step.step} step={step.step}>
+              {!isLastStep && <StepperSeparator />}
 
-            <StepperTrigger>
-              <Button
-                variant={state === "completed" || state === "active" ? "default" : "outline"}
-                size="icon"
-                className={`rounded-full shrink-0 ${
-                  state === "active" ? "ring-2 ring-ring ring-offset-2 ring-offset-background" : ""
-                }`}
-                onClick={() => setCurrentStep(step.step)}
-              >
-                {state === "completed" && <Check className="size-5" />}
-                {state === "active" && <Circle className="size-4" />}
-                {state === "inactive" && <Dot className="size-4" />}
-              </Button>
-            </StepperTrigger>
+              <StepperTrigger>
+                <Button
+                  variant={state === "completed" || state === "active" ? "default" : "outline"}
+                  size="icon"
+                  className={`rounded-full shrink-0 ${
+                    state === "active" ? "ring-2 ring-ring ring-offset-2 ring-offset-background" : ""
+                  }`}
+                  onClick={() => setCurrentStep(step.step)}
+                >
+                  {state === "completed" && <Check className="size-5" />}
+                  {state === "active" && <Circle className="size-4" />}
+                  {state === "inactive" && <Dot className="size-4" />}
+                </Button>
+              </StepperTrigger>
 
-            <div className="flex flex-col gap-1">
-              <StepperTitle
-                className={state === "active" ? "text-primary" : ""}
-              >
-                {step.title}
-              </StepperTitle>
-              <StepperDescription
-                className={state === "active" ? "text-primary" : ""}
-              >
-                {step.description}
-              </StepperDescription>
-            </div>
-          </StepperItem>
-        );
-      })}
-    </Stepper>
+              <div className="flex flex-col gap-1 mr-48">
+                <StepperTitle
+                  className={state === "active" ? "text-primary" : ""}
+                >
+                  {step.title}
+                </StepperTitle>
+                <StepperDescription
+                  className={state === "active" ? "text-primary" : ""}
+                >
+                  {step.description}
+                </StepperDescription>
+              </div>
+            </StepperItem>
+          );
+        })}
+      </Stepper>
+    </div>
   );
 }
 

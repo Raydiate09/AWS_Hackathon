@@ -1,0 +1,27 @@
+# Virtual environment
+venv/
+env/
+
+# Environment variables (NEVER COMMIT THIS)
+.env
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# macOS
+.DS_Store
+
+# AWS
+*.pem
+
+# Test files
+test.py
+scratch.py

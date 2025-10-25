@@ -1,0 +1,25 @@
+{
+  "name": "aws_hackathon",
+  "version": "1.0.0",
+  "description": "DTS Logistics",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Raydiate09/AWS_Hackathon.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Raydiate09/AWS_Hackathon/issues"
+  },
+  "homepage": "https://github.com/Raydiate09/AWS_Hackathon#readme",
+  "dependencies": {
+    "@radix-ui/themes": "^3.2.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  }
+}

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { LocationInput } from "@/components/ui/location-input";
 import { apiService, type OptimizeRouteResponse, type Location } from "@/services/api";
@@ -12,14 +12,55 @@ interface RouteOptimizationFormProps {
   }) => void;
 }
 
+interface GoogleRouteSummary {
+  distance_meters: number;
+  duration_seconds: number;
+  duration_in_traffic_seconds?: number;
+  waypoint_order?: number[];
+}
+
+interface GoogleRouteResponse {
+  success: boolean;
+  coordinates: [number, number][];
+  summary?: GoogleRouteSummary;
+  error?: string;
+  message?: string;
+  segments?: unknown;
+  legs?: unknown;
+}
+
+interface SunlightSegment {
+  segment_name: string;
+  risk_score: number;
+  risk_level: string;
+  explanation: string;
+}
+
+interface SunlightRiskResult {
+  overall_risk_level: string;
+  overall_risk_score: number;
+  segment_count?: number;
+  segments?: SunlightSegment[];
+  recommendations?: string[];
+}
+
 export function RouteOptimizationForm({ onRouteOptimized }: RouteOptimizationFormProps) {
   const [loading, setLoading] = useState(false);
-  const [tomtomLoading, setTomtomLoading] = useState(false);
+  const [routeLoading, setRouteLoading] = useState(false);
   const [sunlightLoading, setSunlightLoading] = useState(false);
   const [result, setResult] = useState<OptimizeRouteResponse | null>(null);
-  const [tomtomResult, setTomtomResult] = useState<any>(null);
-  const [sunlightResult, setSunlightResult] = useState<any>(null);
+  const [routeResult, setRouteResult] = useState<GoogleRouteResponse | null>(null);
+  const [sunlightResult, setSunlightResult] = useState<SunlightRiskResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const travelSeconds = useMemo(() => {
+    if (!routeResult?.summary) {
+      return 0;
+    }
+    const durationWithTraffic = routeResult.summary.duration_in_traffic_seconds;
+    const baseDuration = routeResult.summary.duration_seconds;
+    return (durationWithTraffic ?? baseDuration ?? 0);
+  }, [routeResult]);
   
   // Form inputs using Location objects
   const [origin, setOrigin] = useState<Location>({
@@ -97,96 +138,6 @@ export function RouteOptimizationForm({ onRouteOptimized }: RouteOptimizationFor
     }
   };
 
-  const handleTomTomOptimize = async () => {
-    setTomtomLoading(true);
-    setError(null);
-
-    try {
-      // Only send times if they have actual values
-      const startTime = preferredStartTime ? preferredStartTime : undefined;
-      const arrivalTime = preferredArrivalTime ? preferredArrivalTime : undefined;
-      
-      console.log('Sending times:', { startTime, arrivalTime });
-      
-      const response = await apiService.getTomTomRoute(
-        {
-          origin,
-          destination,
-          stops
-        },
-        startTime,
-        arrivalTime
-      );
-
-      // Check for errors
-      if (!response.success) {
-        setError(response.error || response.message || "Failed to get TomTom route");
-        setTomtomLoading(false);
-        return;
-      }
-
-      setTomtomResult(response);
-      
-      // Validate arrival time AFTER getting the route
-      if (preferredArrivalTime && response.summary?.arrivalTime) {
-        const estimatedArrival = new Date(response.summary.arrivalTime);
-        const requiredArrival = new Date(preferredArrivalTime);
-        
-        console.log('Arrival validation:', {
-          estimated: estimatedArrival,
-          required: requiredArrival,
-          isLate: estimatedArrival > requiredArrival
-        });
-        
-        if (estimatedArrival > requiredArrival) {
-          // Show alert and clear the arrival time
-          const errorMsg = `⚠️ Insufficient delivery time: Route will arrive at ${estimatedArrival.toLocaleString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            hour: 'numeric',
-            minute: '2-digit',
-            timeZoneName: 'short'
-          })}, but you required arrival by ${requiredArrival.toLocaleString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            hour: 'numeric',
-            minute: '2-digit'
-          })}`;
-          
-          setError(errorMsg);
-          setPreferredArrivalTime(""); // Clear the invalid arrival time
-          setTomtomLoading(false);
-          return;
-        }
-      }
-      
-      // Fetch sunlight risk analysis if route was successful
-      if (response.success && response.coordinates) {
-        // Use preferred start time or current time for sunlight analysis
-        const departureTime = preferredStartTime 
-          ? new Date(preferredStartTime).toISOString() 
-          : new Date().toISOString();
-        
-        fetchSunlightRisk(origin, destination, response.coordinates, departureTime);
-      }
-      
-      // Notify parent component to update map with TomTom route
-      if (onRouteOptimized && response.success) {
-        onRouteOptimized({
-          origin,
-          destination,
-          stops,
-          routeCoordinates: response.coordinates
-        });
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to get TomTom route");
-      console.error("TomTom error:", err);
-    } finally {
-      setTomtomLoading(false);
-    }
-  };
-
   const fetchSunlightRisk = async (
     origin: Location,
     destination: Location,
@@ -203,13 +154,109 @@ export function RouteOptimizationForm({ onRouteOptimized }: RouteOptimizationFor
       });
 
       if (response.success) {
-        setSunlightResult(response.data);
+        setSunlightResult(response.data as SunlightRiskResult);
       }
     } catch (err) {
       console.error("Sunlight risk error:", err);
       // Don't show error to user, sunlight is optional enhancement
     } finally {
       setSunlightLoading(false);
+    }
+  };
+
+  const handleGoogleMapsRoute = async () => {
+    setRouteLoading(true);
+    setError(null);
+    setRouteResult(null);
+    setSunlightResult(null);
+
+    try {
+      // Only send times if they have actual values
+      const startTime = preferredStartTime ? preferredStartTime : undefined;
+      const arrivalTime = preferredArrivalTime ? preferredArrivalTime : undefined;
+      
+      console.log('Sending times:', { startTime, arrivalTime });
+      
+      const response = await apiService.getGoogleMapsRoute(
+        {
+          origin,
+          destination,
+          stops
+        },
+        startTime,
+        arrivalTime
+      ) as GoogleRouteResponse;
+
+      // Check for errors
+      if (!response.success) {
+        setError(response.error || response.message || "Failed to get Google route");
+        return;
+      }
+
+      setRouteResult(response);
+      
+      // Validate arrival time AFTER getting the route if we have enough info
+      if (preferredArrivalTime) {
+        const requiredArrival = new Date(preferredArrivalTime);
+        const responseTravelSeconds = response.summary?.duration_in_traffic_seconds ?? response.summary?.duration_seconds;
+        const departureForValidation = startTime ? new Date(startTime) : null;
+
+        if (responseTravelSeconds && departureForValidation) {
+          const estimatedArrival = new Date(departureForValidation.getTime() + responseTravelSeconds * 1000);
+
+          console.log('Arrival validation:', {
+            estimated: estimatedArrival,
+            required: requiredArrival,
+            isLate: estimatedArrival > requiredArrival
+          });
+
+          if (estimatedArrival > requiredArrival) {
+            // Show alert and clear the arrival time
+            const errorMsg = `⚠️ Insufficient delivery time: Route will arrive at ${estimatedArrival.toLocaleString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              hour: 'numeric',
+              minute: '2-digit',
+              timeZoneName: 'short'
+            })}, but you required arrival by ${requiredArrival.toLocaleString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              hour: 'numeric',
+              minute: '2-digit'
+            })}`;
+
+            setError(errorMsg);
+            setPreferredArrivalTime(""); // Clear the invalid arrival time
+            setRouteLoading(false);
+            return;
+          }
+        }
+      }
+      
+      // Fetch sunlight risk analysis if route was successful
+      if (response.success && response.coordinates) {
+        // Use preferred start time or current time for sunlight analysis
+        const departureTime = preferredStartTime 
+          ? new Date(preferredStartTime).toISOString() 
+          : new Date().toISOString();
+        
+        fetchSunlightRisk(origin, destination, response.coordinates, departureTime);
+      }
+      
+      // Notify parent component to update map with Google route
+      if (onRouteOptimized && response.success) {
+        onRouteOptimized({
+          origin,
+          destination,
+          stops,
+          routeCoordinates: response.coordinates
+        });
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to get Google route");
+      console.error("Google Maps error:", err);
+    } finally {
+      setRouteLoading(false);
     }
   };
 
@@ -313,17 +360,17 @@ export function RouteOptimizationForm({ onRouteOptimized }: RouteOptimizationFor
       
       <div className="grid grid-cols-2 gap-2">
         <Button 
-          onClick={handleTomTomOptimize} 
-          disabled={tomtomLoading || loading || !origin.address || !destination.address}
+          onClick={handleGoogleMapsRoute} 
+          disabled={routeLoading || loading || !origin.address || !destination.address}
           className="w-full"
           variant="default"
         >
-          {tomtomLoading ? "Loading Route..." : "Show Route on Map"}
+          {routeLoading ? "Loading Route..." : "Show Route on Map"}
         </Button>
         
         <Button 
           onClick={handleOptimize} 
-          disabled={loading || tomtomLoading || !origin.address || !destination.address}
+          disabled={loading || routeLoading || !origin.address || !destination.address}
           className="w-full"
           variant="outline"
         >
@@ -342,10 +389,10 @@ export function RouteOptimizationForm({ onRouteOptimized }: RouteOptimizationFor
         </p>
       </div>
 
-      {!result && !tomtomResult && !error && (
+      {!result && !routeResult && !error && (
         <div className="p-4 bg-amber-50 border border-amber-300 rounded-md">
           <p className="text-sm font-semibold text-amber-900 mb-2">
-            � Click "Show Route on Map" to display the real driving route
+            🚗 Click "Show Route on Map" to display the real driving route
           </p>
           <p className="text-xs text-amber-800">
             Route will follow actual roads and highways, accounting for real-time traffic conditions. 
@@ -383,7 +430,7 @@ export function RouteOptimizationForm({ onRouteOptimized }: RouteOptimizationFor
           </p>
           {!error.includes("Insufficient delivery time") && (
             <p className="text-red-600 text-xs">
-              This may be due to missing TomTom API key. Check backend/.env file and ensure TOMTOM_API_KEY is set.
+              This may be due to missing Google Maps API key. Check backend/.env file and ensure GOOGLE_MAPS_API_KEY is set.
             </p>
           )}
           {error.includes("Insufficient delivery time") && (
@@ -447,7 +494,7 @@ export function RouteOptimizationForm({ onRouteOptimized }: RouteOptimizationFor
         </div>
       )}
 
-      {tomtomResult && tomtomResult.success && (
+      {routeResult && routeResult.success && (
         <div className="space-y-4 p-4 bg-green-50 border border-green-300 rounded-md">
           <h3 className="font-semibold text-green-900">✅ Real Driving Route Displayed</h3>
           
@@ -455,32 +502,28 @@ export function RouteOptimizationForm({ onRouteOptimized }: RouteOptimizationFor
             Green line on map shows the actual road network route with real-time traffic data
           </p>
           
-          {tomtomResult.summary && (
+          {routeResult.summary && (
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-sm font-medium">Driving Distance:</p>
-                <p className="text-xs">{(tomtomResult.summary.lengthInMeters * 0.000621371).toFixed(2)} miles</p>
+                <p className="text-xs">{(routeResult.summary.distance_meters * 0.000621371).toFixed(2)} miles</p>
               </div>
               <div>
                 <p className="text-sm font-medium">Travel Time:</p>
-                <p className="text-xs">{Math.round(tomtomResult.summary.travelTimeInSeconds / 60)} minutes ({(tomtomResult.summary.travelTimeInSeconds / 3600).toFixed(1)} hours)</p>
-              </div>
-              <div>
-                <p className="text-sm font-medium">Traffic Delay:</p>
-                <p className="text-xs text-orange-600 font-medium">+{Math.round(tomtomResult.summary.trafficDelayInSeconds / 60)} min</p>
+                <p className="text-xs">{Math.round(travelSeconds / 60)} minutes ({(travelSeconds / 3600).toFixed(1)} hours)</p>
               </div>
               <div>
                 <p className="text-sm font-medium">Estimated Arrival:</p>
                 <p className="text-xs">
-                  {tomtomResult.summary.arrivalTime 
-                    ? new Date(tomtomResult.summary.arrivalTime).toLocaleString('en-US', {
+                  {preferredStartTime && travelSeconds
+                    ? new Date(new Date(preferredStartTime).getTime() + (travelSeconds * 1000)).toLocaleString('en-US', {
                         month: 'short',
                         day: 'numeric',
                         hour: 'numeric',
                         minute: '2-digit',
                         timeZoneName: 'short'
                       })
-                    : 'N/A'}
+                    : 'Provide a start time to estimate arrival'}
                 </p>
               </div>
             </div>
@@ -530,7 +573,7 @@ export function RouteOptimizationForm({ onRouteOptimized }: RouteOptimizationFor
                     View Segment Details ({sunlightResult.segment_count} segments)
                   </summary>
                   <div className="mt-2 space-y-2 max-h-40 overflow-y-auto">
-                    {sunlightResult.segments.map((seg: any, idx: number) => (
+                    {sunlightResult.segments.map((seg: SunlightSegment, idx: number) => (
                       <div key={idx} className="text-xs p-2 bg-white rounded border border-yellow-200">
                         <div className="font-medium">{seg.segment_name}</div>
                         <div className="text-yellow-700">

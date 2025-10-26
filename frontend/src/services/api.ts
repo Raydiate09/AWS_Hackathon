@@ -123,6 +123,35 @@ export const apiService = {
     return data;
   },
 
+  // Google Maps route optimization
+  async getGoogleMapsRoute(route: RouteDetails, preferredStartTime?: string, preferredArrivalTime?: string) {
+    const payload = {
+      route,
+      preferred_start_time: preferredStartTime,
+      preferred_arrival_time: preferredArrivalTime
+    };
+
+    console.log('Google Maps API Request:', payload);
+
+    const response = await fetch(`${API_BASE_URL}/google-maps-route`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await response.json();
+
+    console.log('Google Maps API Response:', { status: response.status, ok: response.ok, data });
+
+    if (!response.ok) {
+      return data;
+    }
+
+    return data;
+  },
+
   // Sunlight risk analysis
   async getSunlightRisk(data: {
     origin: { lat: number; lng: number };

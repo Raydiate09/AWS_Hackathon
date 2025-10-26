@@ -3,17 +3,19 @@ import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
 import type { DateRange } from "react-day-picker";
-import { Check, Circle, Dot } from "lucide-react";
+import { Check, Circle, Dot, CornerUpLeft } from "lucide-react";
 import { 
   Stepper, 
   StepperItem, 
   StepperSeparator, 
   StepperTrigger, 
   StepperTitle, 
-  StepperDescription 
+  StepperDescription,
+  getSegmentRiskScore
 } from "@/components/ui/stepper";
 import MapboxExample from "@/components/MapboxExample";
 import { RouteOptimizationForm } from "@/components/RouteOptimizationForm";
+import { apiService } from "@/services/api";
 
 type RouteLeg = {
   leg_index: number;
@@ -70,6 +72,13 @@ function StepperDemo({
   segments?: RouteSegment[];
 }) {
   const [currentStep, setCurrentStep] = useState(1);
+  type StepDefinition = {
+    step: number;
+    title: string;
+    description: string;
+    segment?: RouteSegment;
+    totalRisk?: number;
+  };
 
   // Reset to step 1 when route changes
   useEffect(() => {
@@ -99,7 +108,7 @@ function StepperDemo({
         });
       });
 
-      return combined.map((entry, index) => {
+      return combined.map<StepDefinition>((entry, index) => {
         if (entry.kind === "leg") {
           const distanceMiles = entry.leg.distance_meters ? entry.leg.distance_meters * 0.000621371 : 0;
           const durationSeconds = entry.leg.duration_in_traffic_seconds ?? entry.leg.duration_seconds ?? 0;
@@ -113,12 +122,27 @@ function StepperDemo({
             descriptionParts.push(`${durationMinutes} min`);
           }
 
+          const legSegments = (segments || []).filter((segment) => segment.leg_index === entry.leg.leg_index);
+          let totalRisk = 0;
+          for (const seg of legSegments) {
+            const riskData = getSegmentRiskScore({
+              distance_meters: seg.distance_meters,
+              duration_seconds: seg.duration_seconds,
+              duration_in_traffic_seconds: seg.duration_in_traffic_seconds,
+              travel_mode: seg.travel_mode,
+              instruction: seg.instruction,
+            });
+            if (riskData.score) totalRisk += riskData.score;
+          }
+
           return {
             step: index + 1,
             title: `Leg ${entry.leg.leg_index + 1}: ${formatAddress(entry.leg.start_address)} → ${formatAddress(entry.leg.end_address)}`,
             description: descriptionParts.length > 0
               ? descriptionParts.join(" • ")
               : "Distance and duration unavailable",
+            segment: undefined,
+            totalRisk,
           };
         }
 
@@ -147,11 +171,13 @@ function StepperDemo({
           step: index + 1,
           title: `Segment ${segment.step_index + 1}`,
           description: segmentParts.length > 0 ? segmentParts.join(" • ") : "Segment details unavailable",
+          segment,
+          totalRisk: undefined,
         };
       });
     }
 
-    const steps = [];
+    const steps: StepDefinition[] = [];
     let stepNumber = 1;
 
     // Add origin as first step
@@ -160,6 +186,8 @@ function StepperDemo({
         step: stepNumber++,
         title: `Pickup at ${origin.address.split(',')[0]}`,
         description: `Package collected from ${origin.address}`,
+        segment: undefined,
+        totalRisk: undefined,
       });
     }
 
@@ -170,6 +198,8 @@ function StepperDemo({
           step: stepNumber++,
           title: `Stop ${index + 1}: ${stop.address.split(',')[0]}`,
           description: `Delivery stop at ${stop.address}`,
+          segment: undefined,
+          totalRisk: undefined,
         });
       });
     }
@@ -180,6 +210,8 @@ function StepperDemo({
         step: stepNumber++,
         title: `Delivery at ${destination.address.split(',')[0]}`,
         description: `Final destination: ${destination.address}`,
+        segment: undefined,
+        totalRisk: undefined,
       });
     }
 
@@ -190,6 +222,8 @@ function StepperDemo({
           step: 1,
           title: "No Route Selected",
           description: "Please enter origin and destination to see steps",
+          segment: undefined,
+          totalRisk: undefined,
         }
       ];
     }
@@ -211,9 +245,10 @@ function StepperDemo({
         {steps.map((step, index) => {
           const state = getStepState(step.step);
           const isLastStep = index === steps.length - 1;
+          const leftTurnRisk = step.segment?.instruction?.includes("Turn <b>left</b>") ?? false;
 
           return (
-            <StepperItem key={step.step} step={step.step}>
+            <StepperItem key={step.step} step={step.step} segmentInfo={step.segment} totalRisk={step.totalRisk}>
               {!isLastStep && <StepperSeparator />}
 
               <StepperTrigger>
@@ -232,16 +267,40 @@ function StepperDemo({
               </StepperTrigger>
 
               <div className="flex flex-col gap-1 mr-48">
-                <StepperTitle
-                  className={state === "active" ? "text-primary" : ""}
-                >
-                  {step.title}
-                </StepperTitle>
-                <StepperDescription
-                  className={state === "active" ? "text-primary" : ""}
-                >
-                  {step.description}
-                </StepperDescription>
+                {step.segment ? (
+                  <div className="flex flex-row items-center gap-2">
+                    <StepperDescription
+                      className={state === "active" ? "text-primary" : ""}
+                    >
+                      {step.description}
+                    </StepperDescription>
+                    {leftTurnRisk && (
+                      <span className="inline-flex items-center justify-center py-1 px-1 bg-red-50 border border-red-200 rounded">
+                        <CornerUpLeft className="w-3 h-3 text-red-500" strokeWidth={3} />
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex flex-row items-center gap-2">
+                      <StepperTitle
+                        className={state === "active" ? "text-primary" : ""}
+                      >
+                        {step.title}
+                      </StepperTitle>
+                      {leftTurnRisk && (
+                        <span className="inline-flex items-center justify-center py-1 px-1 bg-red-50 border border-red-200 rounded">
+                          <CornerUpLeft className="w-3 h-3 text-red-500" strokeWidth={3} />
+                        </span>
+                      )}
+                    </div>
+                    <StepperDescription
+                      className={state === "active" ? "text-primary" : ""}
+                    >
+                      {step.description}
+                    </StepperDescription>
+                  </>
+                )}
               </div>
             </StepperItem>
           );
@@ -251,56 +310,332 @@ function StepperDemo({
   );
 }
 
-function CrashDataDemo() {
-  const [data, setData] = useState<Record<string, unknown>[]>([]);
+type CrashProximityCrash = {
+  crash_fact_id?: string;
+  name?: string;
+  latitude?: number;
+  longitude?: number;
+  distance_meters: number;
+  crash_datetime?: string;
+  collision_type?: string;
+  primary_factor?: string;
+  lighting?: string;
+  weather?: string;
+  a_street?: string;
+  b_street?: string;
+  fatal_injuries?: number;
+  severe_injuries?: number;
+  moderate_injuries?: number;
+  minor_injuries?: number;
+  total_injuries?: number;
+  speeding_flag?: boolean;
+  hit_and_run_flag?: boolean;
+};
+
+type CrashProximitySegmentResult = {
+  leg_index?: number | null;
+  step_index?: number | null;
+  instruction?: string;
+  travel_mode?: string;
+  distance_meters?: number;
+  duration_seconds?: number;
+  duration_in_traffic_seconds?: number;
+  close_crash_count: number;
+  min_distance_meters?: number | null;
+  close_crashes: CrashProximityCrash[];
+};
+
+type CrashProximityLegSummary = {
+  leg_index: number;
+  segment_count: number;
+  segments_with_crashes: number;
+  total_close_crashes: number;
+  min_distance_meters?: number | null;
+};
+
+type CrashProximityAnalysis = {
+  success: boolean;
+  threshold_meters: number;
+  segment_count: number;
+  segments_with_crashes: number;
+  total_close_crashes: number;
+  segments: CrashProximitySegmentResult[];
+  legs_summary: CrashProximityLegSummary[];
+  error?: string;
+};
+
+function CrashDataDemo({
+  legs,
+  segments
+}: {
+  legs?: RouteLeg[];
+  segments?: RouteSegment[];
+}) {
+  const [analysis, setAnalysis] = useState<CrashProximityAnalysis | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const thresholdMeters = 200;
+  const segmentsCount = segments?.length ?? 0;
+  const legsCount = legs?.length ?? 0;
 
-  const fetchCrashData = async () => {
+  useEffect(() => {
+    setAnalysis(null);
+    setError(null);
+  }, [segmentsCount, legsCount]);
+
+  const stripHtml = (value?: string) =>
+    value ? value.replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").trim() : "";
+
+  const formatCrashTime = (value?: string) => {
+    if (!value) return "Unknown time";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return value;
+    }
+    return parsed.toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit"
+    });
+  };
+
+  const formatInjurySummary = (crash: CrashProximityCrash) => {
+    const parts: string[] = [];
+    if (crash.fatal_injuries) parts.push(`${crash.fatal_injuries} fatal`);
+    if (crash.severe_injuries) parts.push(`${crash.severe_injuries} severe`);
+    if (crash.moderate_injuries) parts.push(`${crash.moderate_injuries} moderate`);
+    if (crash.minor_injuries) parts.push(`${crash.minor_injuries} minor`);
+    if (!parts.length && crash.total_injuries) {
+      parts.push(`${crash.total_injuries} injuries`);
+    }
+    if (!parts.length) {
+      return "No injuries reported";
+    }
+    return parts.join(", ");
+  };
+
+  const formatLegLabel = (legIndex?: number | null) => {
+    if (legIndex === null || legIndex === undefined) {
+      return "Segment";
+    }
+    const leg = legs?.find((item) => item.leg_index === legIndex);
+    if (!leg) {
+      return `Leg ${legIndex + 1}`;
+    }
+    const start = leg.start_address?.split(",")[0] ?? "Start";
+    const end = leg.end_address?.split(",")[0] ?? "End";
+    return `Leg ${legIndex + 1}: ${start} → ${end}`;
+  };
+
+  const formatMiles = (meters?: number) => {
+    if (!meters) return null;
+    return `${(meters * 0.000621371).toFixed(2)} mi`;
+  };
+
+  const formatDurationMinutes = (segment: CrashProximitySegmentResult) => {
+    const durationSeconds = segment.duration_in_traffic_seconds ?? segment.duration_seconds;
+    if (!durationSeconds) {
+      return null;
+    }
+    return `${Math.round(durationSeconds / 60)} min`;
+  };
+
+  const handleAnalyze = async () => {
+    if (!segments || segments.length === 0) {
+      setError("Load a Google Maps route to analyze crash exposure.");
+      setAnalysis(null);
+      return;
+    }
+
+    const payloadSegments = segments
+      .filter((segment) => Array.isArray(segment.coordinates) && segment.coordinates.length >= 2)
+      .map((segment) => ({
+        leg_index: segment.leg_index,
+        step_index: segment.step_index,
+        coordinates: segment.coordinates,
+        distance_meters: segment.distance_meters,
+        duration_seconds: segment.duration_seconds,
+        duration_in_traffic_seconds: segment.duration_in_traffic_seconds,
+        instruction: segment.instruction,
+        travel_mode: segment.travel_mode,
+      }));
+
+    if (payloadSegments.length === 0) {
+      setError("Route segments are missing geometry data.");
+      setAnalysis(null);
+      return;
+    }
+
     setLoading(true);
     setError(null);
+
     try {
-      const response = await fetch('http://localhost:5001/api/crash-data');
-      const result = await response.json();
-      if (result.success) {
-        setData(result.data);
-      } else {
-        setError(result.error);
+      const response: CrashProximityAnalysis = await apiService.analyzeCrashProximity({
+        segments: payloadSegments,
+        threshold_meters: thresholdMeters,
+        max_crashes_per_segment: 5
+      });
+
+      if (!response.success) {
+        setError(response.error || "Crash proximity analysis failed.");
+        setAnalysis(null);
+        return;
       }
+
+      setAnalysis(response);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch data');
+      setError(err instanceof Error ? err.message : "Crash proximity analysis failed.");
+      setAnalysis(null);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="crash-data-demo">
-      <Button onClick={fetchCrashData} disabled={loading}>
-        {loading ? 'Loading...' : 'Fetch Crash Data'}
-      </Button>
-      {error && <p style={{ color: 'red' }}>{error}</p>}
-      {data.length > 0 && (
-        <div style={{ marginTop: '20px' }}>
-          <h3>First 100 Crash Records</h3>
-          <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-            <thead>
-              <tr>
-                {Object.keys(data[0]).map(key => (
-                  <th key={key} style={{ border: '1px solid #ddd', padding: '8px' }}>{key}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {data.map((record, index) => (
-                <tr key={index}>
-                  {Object.values(record).map((value, i) => (
-                    <td key={i} style={{ border: '1px solid #ddd', padding: '8px' }}>{String(value)}</td>
-                  ))}
-                </tr>
+    <div className="space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Button onClick={handleAnalyze} disabled={loading}>
+            {loading ? "Analyzing..." : "Analyze Crash Proximity"}
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            Within {thresholdMeters} m of the route using 13k historic crashes
+          </span>
+        </div>
+        <div className="text-xs text-muted-foreground">
+          Powered by Shapely spatial buffers and STRtree search
+        </div>
+      </div>
+
+      {error && <p className="text-sm text-red-500">{error}</p>}
+
+      {analysis && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="rounded-md border p-3">
+              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Segments analyzed</div>
+              <div className="text-2xl font-semibold">{analysis.segment_count}</div>
+            </div>
+            <div className="rounded-md border p-3">
+              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Segments with crashes</div>
+              <div className="text-2xl font-semibold">{analysis.segments_with_crashes}</div>
+            </div>
+            <div className="rounded-md border p-3">
+              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Incidents flagged</div>
+              <div className="text-2xl font-semibold">{analysis.total_close_crashes}</div>
+            </div>
+          </div>
+
+          {analysis.legs_summary.length > 0 && (
+            <div className="rounded-md border p-4 space-y-2">
+              <div className="text-sm font-semibold">Leg breakdown</div>
+              {analysis.legs_summary.map((leg) => (
+                <div key={leg.leg_index} className="rounded border border-dashed p-2 text-sm">
+                  <div className="font-medium">{formatLegLabel(leg.leg_index)}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {leg.segments_with_crashes} / {leg.segment_count} segments within {analysis.threshold_meters} m
+                    {leg.min_distance_meters !== null && leg.min_distance_meters !== undefined && (
+                      <> • nearest {leg.min_distance_meters.toFixed(1)} m</>
+                    )}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {leg.total_close_crashes} nearby incidents
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
+            </div>
+          )}
+
+          {analysis.segments.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              No historic crash incidents found within {analysis.threshold_meters} meters of this route.
+            </p>
+          )}
+
+          {analysis.segments.length > 0 && (
+            <div className="space-y-4">
+              {analysis.segments.map((segment) => (
+                <div
+                  key={`${segment.leg_index ?? 'na'}-${segment.step_index ?? 'na'}`}
+                  className="rounded-md border p-4 space-y-3"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold">{formatLegLabel(segment.leg_index)}</div>
+                      <div className="text-xs text-muted-foreground">
+                        Segment {segment.step_index !== null && segment.step_index !== undefined ? segment.step_index + 1 : "?"}
+                        {segment.instruction && (
+                          <> • {stripHtml(segment.instruction)}</>
+                        )}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {[formatMiles(segment.distance_meters), formatDurationMinutes(segment)].filter(Boolean).join(" • ") || "Distance unavailable"}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm font-semibold">{segment.close_crash_count} incidents</div>
+                      {segment.min_distance_meters !== null && segment.min_distance_meters !== undefined && (
+                        <div className="text-xs text-muted-foreground">Nearest {segment.min_distance_meters.toFixed(1)} m</div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-left text-xs">
+                      <thead className="bg-muted/50 text-muted-foreground">
+                        <tr>
+                          <th className="py-2 pr-4 font-medium">Crash</th>
+                          <th className="py-2 pr-4 font-medium">Distance</th>
+                          <th className="py-2 pr-4 font-medium">Context</th>
+                          <th className="py-2 pr-4 font-medium">Injuries</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {segment.close_crashes.map((crash, index) => (
+                          <tr key={crash.crash_fact_id ?? index} className="border-t">
+                            <td className="py-2 pr-4 align-top">
+                              <div className="font-medium">{crash.collision_type || "Collision"}</div>
+                              <div className="text-muted-foreground">
+                                {formatCrashTime(crash.crash_datetime)}
+                              </div>
+                              <div className="text-muted-foreground">
+                                {crash.a_street || "Unknown"}
+                                {crash.b_street ? ` & ${crash.b_street}` : ""}
+                              </div>
+                            </td>
+                            <td className="py-2 pr-4 align-top">
+                              {crash.distance_meters.toFixed(1)} m
+                            </td>
+                            <td className="py-2 pr-4 align-top">
+                              <div className="text-muted-foreground">
+                                {crash.primary_factor || "Factor unavailable"}
+                              </div>
+                              <div className="text-muted-foreground">
+                                {(crash.weather || "Weather unknown")}
+                                {" • "}
+                                {(crash.lighting || "Lighting unknown")}
+                              </div>
+                            </td>
+                            <td className="py-2 pr-4 align-top">
+                              <div className="text-muted-foreground">{formatInjurySummary(crash)}</div>
+                              {(crash.speeding_flag || crash.hit_and_run_flag) && (
+                                <div className="text-muted-foreground">
+                                  {[crash.speeding_flag ? "Speeding" : null, crash.hit_and_run_flag ? "Hit & run" : null]
+                                    .filter(Boolean)
+                                    .join(" • ")}
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -373,7 +708,7 @@ function App() {
 
       <div className="p-6">
         <h2 className="text-2xl font-bold mb-4">Crash Hotspots</h2>
-        <CrashDataDemo />
+        <CrashDataDemo legs={routeData.legs} segments={routeData.segments} />
       </div>
     </div>
   );

@@ -106,8 +106,8 @@ export function RouteOptimizationForm({ onRouteOptimized }: RouteOptimizationFor
   
   // Form inputs using Location objects
   const [origin, setOrigin] = useState<Location>({
-    address: "San Francisco International Airport, CA",
-    coordinates: { lat: 37.6213, lng: -122.3790 }
+    address: "San Jose State University, San Jose, CA",
+    coordinates: { lat: 37.3352, lng: -121.8811 }
   });
   
   const [destination, setDestination] = useState<Location>({

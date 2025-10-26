@@ -6,6 +6,7 @@ import json
 from dotenv import load_dotenv
 from datetime import datetime
 from tomtom_service import get_tomtom_route
+import csv
 
 load_dotenv()
 
@@ -28,7 +29,7 @@ dynamodb = boto3.resource(
 )
 
 # DynamoDB table
-table = dynamodb.Table("optimizedRoute")
+table = dynamodb.Table("optimizedRoute")  # type: ignore
 
 # Claude model ID
 model_id = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
@@ -264,6 +265,21 @@ def tomtom_route():
         print(f"Error in tomtom_route: {e}")
         import traceback
         traceback.print_exc()
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+@app.route('/api/crash-data', methods=['GET'])
+def get_crash_data():
+    try:
+        with open('../crashdata2022-present.csv', 'r') as f:
+            reader = csv.DictReader(f)
+            records = list(reader)[:100]
+        return jsonify({
+            "success": True,
+            "data": records
+        })
+    except Exception as e:
         return jsonify({
             "success": False,
             "error": str(e)

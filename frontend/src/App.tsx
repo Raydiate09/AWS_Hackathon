@@ -1,7 +1,7 @@
 import './App.css'
 import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import type { DateRange } from "react-day-picker";
 import { Check, Circle, Dot } from "lucide-react";
 import { 
@@ -13,7 +13,6 @@ import {
   StepperDescription 
 } from "@/components/ui/stepper";
 import MapboxExample from "@/components/MapboxExample";
-import { apiService } from "@/services/api";
 import { RouteOptimizationForm } from "@/components/RouteOptimizationForm";
 
 export function CalendarRangeDemo() {
@@ -31,10 +30,6 @@ export function CalendarRangeDemo() {
       numberOfMonths={2}
     />
   );
-}
-
-function ButtonDemo() {
-  return <Button>Click me</Button>;
 }
 
 function StepperDemo() {
@@ -120,6 +115,62 @@ function StepperDemo() {
   );
 }
 
+function CrashDataDemo() {
+  const [data, setData] = useState<Record<string, unknown>[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchCrashData = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch('http://localhost:5001/api/crash-data');
+      const result = await response.json();
+      if (result.success) {
+        setData(result.data);
+      } else {
+        setError(result.error);
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="crash-data-demo">
+      <Button onClick={fetchCrashData} disabled={loading}>
+        {loading ? 'Loading...' : 'Fetch Crash Data'}
+      </Button>
+      {error && <p style={{ color: 'red' }}>{error}</p>}
+      {data.length > 0 && (
+        <div style={{ marginTop: '20px' }}>
+          <h3>First 100 Crash Records</h3>
+          <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+            <thead>
+              <tr>
+                {Object.keys(data[0]).map(key => (
+                  <th key={key} style={{ border: '1px solid #ddd', padding: '8px' }}>{key}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((record, index) => (
+                <tr key={index}>
+                  {Object.values(record).map((value, i) => (
+                    <td key={i} style={{ border: '1px solid #ddd', padding: '8px' }}>{String(value)}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function App() {
   const [routeData, setRouteData] = useState<{
     origin?: { address: string; coordinates: { lat: number; lng: number } };
@@ -140,21 +191,18 @@ function App() {
   return (
     <div className="landing-page">
       <h1>DTS - Delivery Time Slot Optimization</h1>
-      
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6">
-        {/* Route Optimization with AI */}
         <div className="space-y-4">
           <RouteOptimizationForm onRouteOptimized={handleRouteOptimized} />
         </div>
 
-        {/* Calendar for delivery window selection */}
         <div className="space-y-4">
           <h2 className="text-2xl font-bold">Select Delivery Window</h2>
           <CalendarRangeDemo />
         </div>
       </div>
 
-      {/* Map View - Full Width */}
       <div className="px-6 pb-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-2xl font-bold">Route Map</h2>
@@ -163,7 +211,7 @@ function App() {
           </p>
         </div>
         <div style={{ height: '700px', width: '100%' }}>
-          <MapboxExample 
+          <MapboxExample
             origin={routeData.origin}
             destination={routeData.destination}
             stops={routeData.stops}
@@ -172,13 +220,17 @@ function App() {
         </div>
       </div>
 
-      {/* Delivery Progress Stepper */}
       <div className="p-6">
         <h2 className="text-2xl font-bold mb-4">Delivery Progress</h2>
         <StepperDemo />
       </div>
+
+      <div className="p-6">
+        <h2 className="text-2xl font-bold mb-4">Crash Hotspots</h2>
+        <CrashDataDemo />
+      </div>
     </div>
-  )
+  );
 }
 
 export default App

@@ -921,6 +921,7 @@ function App() {
               destination={routeData.destination}
               stops={routeData.stops}
               routeCoordinates={routeData.routeCoordinates}
+              segments={routeData.segments}
             />
           </div>
         </div>

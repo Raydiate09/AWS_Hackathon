@@ -660,7 +660,7 @@ export function RouteOptimizationForm({ onRouteOptimized }: RouteOptimizationFor
             </div>
           )}
 
-          {hasSegmentWeather && routeResult.segments && (
+          {/* {hasSegmentWeather && routeResult.segments && (
             <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded">
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-lg" role="img" aria-label="weather">🌦️</span>
@@ -760,7 +760,7 @@ export function RouteOptimizationForm({ onRouteOptimized }: RouteOptimizationFor
                 })()}
               </div>
             </div>
-          )}
+          )} */}
 
           {/* Sunlight Risk Analysis */}
           {sunlightResult && (

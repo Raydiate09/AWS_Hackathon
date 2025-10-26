@@ -52,6 +52,15 @@ type RouteSegment = {
   duration_in_traffic_seconds?: number;
   instruction: string;
   travel_mode: string;
+  weather?: {
+    description?: string;
+    temperature?: number;
+    feels_like?: number;
+    humidity?: number;
+    wind_speed?: number;
+    icon?: string;
+    timestamp?: number;
+  } | null;
 };
 
 export function CalendarRangeDemo() {
@@ -384,6 +393,58 @@ function StepperDemo({
                     >
                       {step.description}
                     </StepperDescription>
+                    {step.segment.weather?.icon && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="inline-flex items-center justify-center py-1 px-1 bg-blue-100 border border-blue-300 rounded">
+                            <img
+                              src={`https://openweathermap.org/img/wn/${step.segment.weather.icon}@2x.png`}
+                              alt={step.segment.weather.description ?? 'Weather'}
+                              className="w-4 h-4"
+                            />
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          <div className="space-y-2">
+                            <div className="grid grid-cols-2 gap-2 text-xs">
+                              <div>
+                                <p className="font-medium">Conditions</p>
+                                <p className="capitalize">{step.segment.weather.description ?? 'Not available'}</p>
+                              </div>
+                              <div>
+                                <p className="font-medium">Forecast Issued</p>
+                                <p>{step.segment.weather.timestamp ? new Date(step.segment.weather.timestamp * 1000).toLocaleString(undefined, {
+                                  month: "short",
+                                  day: "numeric",
+                                  hour: "numeric",
+                                  minute: "2-digit"
+                                }) : 'Not available'}</p>
+                              </div>
+                              <div>
+                                <p className="font-medium">Temperature</p>
+                                <p>{step.segment.weather.temperature ? (() => {
+                                  const temp = step.segment.weather!.temperature!;
+                                  const fahrenheit = (temp * 9) / 5 + 32;
+                                  return `${temp.toFixed(1)}°C / ${fahrenheit.toFixed(1)}°F`;
+                                })() : '—'}</p>
+                              </div>
+                              <div>
+                                <p className="font-medium">Humidity</p>
+                                <p>{typeof step.segment.weather.humidity === 'number' ? `${step.segment.weather.humidity}%` : '—'}</p>
+                              </div>
+                              <div className="col-span-2">
+                                <p className="font-medium">Wind</p>
+                                <p>{step.segment.weather.wind_speed ? (() => {
+                                  const speed = step.segment.weather!.wind_speed!;
+                                  const mph = speed * 2.23694;
+                                  return `${speed.toFixed(1)} m/s (${mph.toFixed(1)} mph)`;
+                                })() : '—'}</p>
+                              </div>
+                            </div>
+                          </div>
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
                     {leftTurnRisk && step.segmentRisk?.crashCount && step.segmentRisk.crashCount >= 3 && (
                       <>
                         <Tooltip>

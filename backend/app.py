@@ -6,6 +6,7 @@ import json
 from dotenv import load_dotenv
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional, Tuple
+from collections import defaultdict
 from tomtom_service import get_tomtom_route
 from google_maps_service import get_google_maps_route
 from sunlight_service import calculate_sunlight_risk, calculate_driving_bearing, analyze_route_sunlight_risk
@@ -20,7 +21,7 @@ PROJECT_TRANSFORMER = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=T
 CRASH_GEOMETRIES: List[Point] = []
 CRASH_METADATA: List[Dict[str, Any]] = []
 CRASH_TREE: Optional[STRtree] = None
-CRASH_GEOM_INDEX: Dict[int, int] = {}
+CRASH_GEOM_INDEX: Dict[bytes, List[int]] = {}
 
 
 def _parse_float(value: Any) -> Optional[float]:
@@ -69,6 +70,7 @@ def _ensure_crash_spatial_index() -> None:
 
     crash_points: List[Point] = []
     metadata: List[Dict[str, Any]] = []
+    geom_index_map: Dict[bytes, List[int]] = defaultdict(list)
 
     with open(CRASH_DATASET_PATH, newline="", encoding="utf-8") as csv_file:
         reader = csv.DictReader(csv_file)
@@ -109,12 +111,14 @@ def _ensure_crash_spatial_index() -> None:
                 "hit_and_run_flag": _parse_bool(row.get("HitAndRunFlag")),
             })
 
+            geom_index_map[geom.wkb].append(len(metadata) - 1)
+
     CRASH_GEOMETRIES = crash_points
     CRASH_METADATA = metadata
 
     if crash_points:
         CRASH_TREE = STRtree(crash_points)
-        CRASH_GEOM_INDEX = {id(geom): idx for idx, geom in enumerate(crash_points)}
+        CRASH_GEOM_INDEX = dict(geom_index_map)
     else:
         CRASH_TREE = None
         CRASH_GEOM_INDEX = {}
@@ -573,15 +577,37 @@ def analyze_crash_proximity():
             candidate_points = CRASH_TREE.query(buffer_geom)
 
             close_crashes: List[Dict[str, Any]] = []
-            for geom in candidate_points:
-                crash_idx = CRASH_GEOM_INDEX.get(id(geom))
-                if crash_idx is None:
+            seen_crash_ids: set[str] = set()
+            for candidate in candidate_points:
+                if hasattr(candidate, "wkb"):
+                    geom = candidate
+                    crash_indexes = CRASH_GEOM_INDEX.get(geom.wkb, [])
+                else:
+                    try:
+                        geom_index = int(candidate)
+                    except (TypeError, ValueError):
+                        continue
+                    if geom_index < 0 or geom_index >= len(CRASH_GEOMETRIES):
+                        continue
+                    geom = CRASH_GEOMETRIES[geom_index]
+                    crash_indexes = [geom_index]
+
+                if not crash_indexes:
                     continue
 
-                crash_info = CRASH_METADATA[crash_idx]
                 distance = geom.distance(line)
+                if distance > threshold_meters:
+                    continue
 
-                if distance <= threshold_meters:
+                for crash_idx in crash_indexes:
+                    if crash_idx < 0 or crash_idx >= len(CRASH_METADATA):
+                        continue
+                    crash_info = CRASH_METADATA[crash_idx]
+                    crash_id = crash_info.get("crash_fact_id") or f"idx-{crash_idx}"
+                    if crash_id in seen_crash_ids:
+                        continue
+                    seen_crash_ids.add(crash_id)
+
                     close_crashes.append({
                         "crash_fact_id": crash_info.get("crash_fact_id"),
                         "name": crash_info.get("name"),
@@ -690,7 +716,7 @@ def get_crash_data():
     try:
         with open(CRASH_DATASET_PATH, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
-            records = list(reader)[:1000]
+            records = list(reader)[:2000]
         return jsonify({
             "success": True,
             "data": records

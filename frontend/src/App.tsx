@@ -1,7 +1,7 @@
 import './App.css'
 import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { DateRange } from "react-day-picker";
 import { Check, Circle, Dot } from "lucide-react";
 import { 
@@ -13,6 +13,8 @@ import {
   StepperDescription 
 } from "@/components/ui/stepper";
 import MapboxExample from "@/components/MapboxExample";
+import { apiService } from "@/services/api";
+import { RouteOptimizationForm } from "@/components/RouteOptimizationForm";
 
 export function CalendarRangeDemo() {
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
@@ -119,14 +121,61 @@ function StepperDemo() {
 }
 
 function App() {
+  const [routeData, setRouteData] = useState<{
+    origin?: { address: string; coordinates: { lat: number; lng: number } };
+    destination?: { address: string; coordinates: { lat: number; lng: number } };
+    stops?: { address: string; coordinates: { lat: number; lng: number } }[];
+    routeCoordinates?: [number, number][]; // TomTom optimized route
+  }>({});
+
+  const handleRouteOptimized = (route: {
+    origin: { address: string; coordinates: { lat: number; lng: number } };
+    destination: { address: string; coordinates: { lat: number; lng: number } };
+    stops: { address: string; coordinates: { lat: number; lng: number } }[];
+    routeCoordinates?: [number, number][];
+  }) => {
+    setRouteData(route);
+  };
+
   return (
     <div className="landing-page">
-      <h1>DTS</h1>
-      <ButtonDemo />
-      <CalendarRangeDemo />
-      <StepperDemo />
-      <div style={{ height: '500px', width: '100%' }}>
-        <MapboxExample />
+      <h1>DTS - Delivery Time Slot Optimization</h1>
+      
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6">
+        {/* Route Optimization with AI */}
+        <div className="space-y-4">
+          <RouteOptimizationForm onRouteOptimized={handleRouteOptimized} />
+        </div>
+
+        {/* Calendar for delivery window selection */}
+        <div className="space-y-4">
+          <h2 className="text-2xl font-bold">Select Delivery Window</h2>
+          <CalendarRangeDemo />
+        </div>
+      </div>
+
+      {/* Map View - Full Width */}
+      <div className="px-6 pb-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-2xl font-bold">Route Map</h2>
+          <p className="text-sm text-muted-foreground">
+            🟢 Green route = Real road network with traffic
+          </p>
+        </div>
+        <div style={{ height: '700px', width: '100%' }}>
+          <MapboxExample 
+            origin={routeData.origin}
+            destination={routeData.destination}
+            stops={routeData.stops}
+            routeCoordinates={routeData.routeCoordinates}
+          />
+        </div>
+      </div>
+
+      {/* Delivery Progress Stepper */}
+      <div className="p-6">
+        <h2 className="text-2xl font-bold mb-4">Delivery Progress</h2>
+        <StepperDemo />
       </div>
     </div>
   )

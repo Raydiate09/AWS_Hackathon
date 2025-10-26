@@ -3,14 +3,15 @@ import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
 import type { DateRange } from "react-day-picker";
-import { Check, Circle, Dot } from "lucide-react";
+import { Check, Circle, Dot, CornerUpLeft } from "lucide-react";
 import { 
   Stepper, 
   StepperItem, 
   StepperSeparator, 
   StepperTrigger, 
   StepperTitle, 
-  StepperDescription 
+  StepperDescription,
+  getSegmentRiskScore
 } from "@/components/ui/stepper";
 import MapboxExample from "@/components/MapboxExample";
 import { RouteOptimizationForm } from "@/components/RouteOptimizationForm";
@@ -70,6 +71,13 @@ function StepperDemo({
   segments?: RouteSegment[];
 }) {
   const [currentStep, setCurrentStep] = useState(1);
+  type StepDefinition = {
+    step: number;
+    title: string;
+    description: string;
+    segment?: RouteSegment;
+    totalRisk?: number;
+  };
 
   // Reset to step 1 when route changes
   useEffect(() => {
@@ -99,7 +107,7 @@ function StepperDemo({
         });
       });
 
-      return combined.map((entry, index) => {
+      return combined.map<StepDefinition>((entry, index) => {
         if (entry.kind === "leg") {
           const distanceMiles = entry.leg.distance_meters ? entry.leg.distance_meters * 0.000621371 : 0;
           const durationSeconds = entry.leg.duration_in_traffic_seconds ?? entry.leg.duration_seconds ?? 0;
@@ -113,12 +121,27 @@ function StepperDemo({
             descriptionParts.push(`${durationMinutes} min`);
           }
 
+          const legSegments = (segments || []).filter((segment) => segment.leg_index === entry.leg.leg_index);
+          let totalRisk = 0;
+          for (const seg of legSegments) {
+            const riskData = getSegmentRiskScore({
+              distance_meters: seg.distance_meters,
+              duration_seconds: seg.duration_seconds,
+              duration_in_traffic_seconds: seg.duration_in_traffic_seconds,
+              travel_mode: seg.travel_mode,
+              instruction: seg.instruction,
+            });
+            if (riskData.score) totalRisk += riskData.score;
+          }
+
           return {
             step: index + 1,
             title: `Leg ${entry.leg.leg_index + 1}: ${formatAddress(entry.leg.start_address)} → ${formatAddress(entry.leg.end_address)}`,
             description: descriptionParts.length > 0
               ? descriptionParts.join(" • ")
               : "Distance and duration unavailable",
+            segment: undefined,
+            totalRisk,
           };
         }
 
@@ -147,11 +170,13 @@ function StepperDemo({
           step: index + 1,
           title: `Segment ${segment.step_index + 1}`,
           description: segmentParts.length > 0 ? segmentParts.join(" • ") : "Segment details unavailable",
+          segment,
+          totalRisk: undefined,
         };
       });
     }
 
-    const steps = [];
+    const steps: StepDefinition[] = [];
     let stepNumber = 1;
 
     // Add origin as first step
@@ -160,6 +185,8 @@ function StepperDemo({
         step: stepNumber++,
         title: `Pickup at ${origin.address.split(',')[0]}`,
         description: `Package collected from ${origin.address}`,
+        segment: undefined,
+        totalRisk: undefined,
       });
     }
 
@@ -170,6 +197,8 @@ function StepperDemo({
           step: stepNumber++,
           title: `Stop ${index + 1}: ${stop.address.split(',')[0]}`,
           description: `Delivery stop at ${stop.address}`,
+          segment: undefined,
+          totalRisk: undefined,
         });
       });
     }
@@ -180,6 +209,8 @@ function StepperDemo({
         step: stepNumber++,
         title: `Delivery at ${destination.address.split(',')[0]}`,
         description: `Final destination: ${destination.address}`,
+        segment: undefined,
+        totalRisk: undefined,
       });
     }
 
@@ -190,6 +221,8 @@ function StepperDemo({
           step: 1,
           title: "No Route Selected",
           description: "Please enter origin and destination to see steps",
+          segment: undefined,
+          totalRisk: undefined,
         }
       ];
     }
@@ -211,9 +244,10 @@ function StepperDemo({
         {steps.map((step, index) => {
           const state = getStepState(step.step);
           const isLastStep = index === steps.length - 1;
+          const leftTurnRisk = step.segment?.instruction?.includes("Turn <b>left</b>") ?? false;
 
           return (
-            <StepperItem key={step.step} step={step.step}>
+            <StepperItem key={step.step} step={step.step} segmentInfo={step.segment} totalRisk={step.totalRisk}>
               {!isLastStep && <StepperSeparator />}
 
               <StepperTrigger>
@@ -232,16 +266,40 @@ function StepperDemo({
               </StepperTrigger>
 
               <div className="flex flex-col gap-1 mr-48">
-                <StepperTitle
-                  className={state === "active" ? "text-primary" : ""}
-                >
-                  {step.title}
-                </StepperTitle>
-                <StepperDescription
-                  className={state === "active" ? "text-primary" : ""}
-                >
-                  {step.description}
-                </StepperDescription>
+                {step.segment ? (
+                  <div className="flex flex-row items-center gap-2">
+                    <StepperDescription
+                      className={state === "active" ? "text-primary" : ""}
+                    >
+                      {step.description}
+                    </StepperDescription>
+                    {leftTurnRisk && (
+                      <span className="inline-flex items-center justify-center py-1 px-1 bg-red-50 border border-red-200 rounded">
+                        <CornerUpLeft className="w-3 h-3 text-red-500" strokeWidth={3} />
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex flex-row items-center gap-2">
+                      <StepperTitle
+                        className={state === "active" ? "text-primary" : ""}
+                      >
+                        {step.title}
+                      </StepperTitle>
+                      {leftTurnRisk && (
+                        <span className="inline-flex items-center justify-center py-1 px-1 bg-red-50 border border-red-200 rounded">
+                          <CornerUpLeft className="w-3 h-3 text-red-500" strokeWidth={3} />
+                        </span>
+                      )}
+                    </div>
+                    <StepperDescription
+                      className={state === "active" ? "text-primary" : ""}
+                    >
+                      {step.description}
+                    </StepperDescription>
+                  </>
+                )}
               </div>
             </StepperItem>
           );

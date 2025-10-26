@@ -3,7 +3,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect, useCallback } from "react";
 import type { DateRange } from "react-day-picker";
-import { Check, Circle, Dot, CornerUpLeft } from "lucide-react";
+import { Check, Circle, Dot, CornerUpLeft, TriangleAlert } from "lucide-react";
 import { 
   Stepper, 
   StepperItem, 
@@ -24,6 +24,11 @@ import {
   NavigationMenuItem,
   NavigationMenuLink,
 } from "@/components/ui/navigation-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 type RouteLeg = {
   leg_index: number;
@@ -352,7 +357,6 @@ function StepperDemo({
               key={step.step}
               step={step.step}
               segmentInfo={step.segment}
-              segmentRisk={step.segmentRisk}
               totalRisk={step.totalRisk}
             >
               {!isLastStep && <StepperSeparator />}
@@ -380,10 +384,41 @@ function StepperDemo({
                     >
                       {step.description}
                     </StepperDescription>
-                    {leftTurnRisk && (
-                      <span className="inline-flex items-center justify-center py-1 px-1 bg-red-50 border border-red-200 rounded">
-                        <CornerUpLeft className="w-3 h-3 text-red-500" strokeWidth={3} />
-                      </span>
+                    {leftTurnRisk && step.segmentRisk?.crashCount && step.segmentRisk.crashCount >= 3 && (
+                      <>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="inline-flex items-center justify-center py-1 px-1 bg-red-50 border border-red-200 rounded">
+                              <CornerUpLeft className="w-3 h-3 text-red-500" strokeWidth={3} />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Left turn ahead - High risk area</p>
+                          </TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="inline-flex items-center justify-center py-1 px-1 bg-amber-50 border border-amber-200 rounded ml-1">
+                              <TriangleAlert className="w-3 h-3 text-amber-600" />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{step.segmentRisk.crashCount} historic crashes within 200m</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </>
+                    )}
+                    {leftTurnRisk && (!step.segmentRisk?.crashCount || step.segmentRisk.crashCount < 3) && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="inline-flex items-center justify-center py-1 px-1 bg-red-50 border border-red-200 rounded">
+                            <CornerUpLeft className="w-3 h-3 text-red-500" strokeWidth={3} />
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Left turn ahead</p>
+                        </TooltipContent>
+                      </Tooltip>
                     )}
                   </div>
                 ) : (
@@ -394,10 +429,41 @@ function StepperDemo({
                       >
                         {step.title}
                       </StepperTitle>
-                      {leftTurnRisk && (
-                        <span className="inline-flex items-center justify-center py-1 px-1 bg-red-50 border border-red-200 rounded">
-                          <CornerUpLeft className="w-3 h-3 text-red-500" strokeWidth={3} />
-                        </span>
+                      {leftTurnRisk && step.segmentRisk?.crashCount && step.segmentRisk.crashCount >= 3 && (
+                        <>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="inline-flex items-center justify-center py-1 px-1 bg-red-50 border border-red-200 rounded">
+                                <CornerUpLeft className="w-3 h-3 text-red-500" strokeWidth={3} />
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Left turn ahead - High risk area</p>
+                            </TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="inline-flex items-center justify-center py-1 px-1 bg-amber-50 border border-amber-200 rounded ml-1">
+                                <TriangleAlert className="w-3 h-3 text-amber-600" />
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>{step.segmentRisk.crashCount} historic crashes within 200m</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </>
+                      )}
+                      {leftTurnRisk && (!step.segmentRisk?.crashCount || step.segmentRisk.crashCount < 3) && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="inline-flex items-center justify-center py-1 px-1 bg-red-50 border border-red-200 rounded">
+                              <CornerUpLeft className="w-3 h-3 text-red-500" strokeWidth={3} />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Left turn ahead</p>
+                          </TooltipContent>
+                        </Tooltip>
                       )}
                     </div>
                     <StepperDescription

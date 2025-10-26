@@ -249,18 +249,15 @@ export function StepperItem({
   className,
   step,
   segmentInfo,
-  segmentRisk,
   totalRisk,
   ...props 
-}: React.HTMLAttributes<HTMLDivElement> & { step: number; segmentInfo?: StepperSegmentInfo; segmentRisk?: SegmentRiskScore | null; totalRisk?: number }) {
+}: React.HTMLAttributes<HTMLDivElement> & { step: number; segmentInfo?: StepperSegmentInfo; totalRisk?: number }) {
   const context = React.useContext(StepperContext)
   const currentStep = context?.currentStep ?? 1
   void segmentInfo;
   
   const state = step < currentStep ? "completed" : step === currentStep ? "5" : "0"
-  const riskScore = typeof totalRisk === "number" ? totalRisk : segmentRisk?.score ?? null
-  const crashCount = segmentRisk?.crashCount ?? 0
-  const showCrashBadge = crashCount > 0
+  const riskScore = totalRisk ?? null
   
   return (
     <div className={cn("relative flex w-full items-start gap-6 group", className)} data-state={state} {...props}>
@@ -269,11 +266,6 @@ export function StepperItem({
         <Alert className="absolute top-0 right-0 w-32 px-2.5 py-1.5 border-red-200 bg-red-50">
           <AlertDescription>Risk: {riskScore}</AlertDescription>
         </Alert>
-      )}
-      {showCrashBadge && (
-        <div className="absolute top-9 right-0 inline-flex items-center gap-1 rounded border border-amber-200 bg-amber-50 px-1.5 py-1 text-[10px] font-medium text-amber-700">
-          {crashCount} incident{crashCount === 1 ? "" : "s"}
-        </div>
       )}
     </div>
   )

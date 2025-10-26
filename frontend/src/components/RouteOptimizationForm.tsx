@@ -377,7 +377,7 @@ export function RouteOptimizationForm({ onRouteOptimized }: RouteOptimizationFor
   };
 
   return (
-    <div className="p-6 border rounded-lg space-y-4">
+    <div className="p-6 border rounded-lg space-y-4 max-h-[500px] overflow-y-auto">
       <h2 className="text-2xl font-bold">Route Optimization</h2>
       
       {/* Origin Input */}

@@ -16,6 +16,12 @@ import {
 import MapboxExample from "@/components/MapboxExample";
 import { RouteOptimizationForm } from "@/components/RouteOptimizationForm";
 import { apiService } from "@/services/api";
+import {
+  NavigationMenu,
+  NavigationMenuList,
+  NavigationMenuItem,
+  NavigationMenuLink,
+} from "@/components/ui/navigation-menu";
 
 type RouteLeg = {
   leg_index: number;
@@ -665,7 +671,15 @@ function App() {
 
   return (
     <div className="landing-page">
-      <h1>DTS - Delivery Time Slot Optimization</h1>
+      <NavigationMenu className="max-w-screen-xl px-6 py-4">
+        <NavigationMenuList>
+          <NavigationMenuItem>
+            <NavigationMenuLink className="text-2xl font-bold text-left">
+              DTS - Delivery Time Slot Optimization
+            </NavigationMenuLink>
+          </NavigationMenuItem>
+        </NavigationMenuList>
+      </NavigationMenu>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6">
         <div className="space-y-4">
@@ -673,25 +687,15 @@ function App() {
         </div>
 
         <div className="space-y-4">
-          <h2 className="text-2xl font-bold">Select Delivery Window</h2>
-          <CalendarRangeDemo />
-        </div>
-      </div>
-
-      <div className="px-6 pb-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-2xl font-bold">Route Map</h2>
-          <p className="text-sm text-muted-foreground">
-            🟢 Green route = Real road network with traffic
-          </p>
-        </div>
-        <div style={{ height: '700px', width: '100%' }}>
-          <MapboxExample
-            origin={routeData.origin}
-            destination={routeData.destination}
-            stops={routeData.stops}
-            routeCoordinates={routeData.routeCoordinates}
-          />
+          {/* <h2 className="text-2xl font-bold">Route Map</h2> */}
+          <div style={{ height: '500px', width: '100%' }}>
+            <MapboxExample
+              origin={routeData.origin}
+              destination={routeData.destination}
+              stops={routeData.stops}
+              routeCoordinates={routeData.routeCoordinates}
+            />
+          </div>
         </div>
       </div>
 

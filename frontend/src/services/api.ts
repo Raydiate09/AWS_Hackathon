@@ -93,13 +93,49 @@ export const apiService = {
   },
 
   // TomTom route optimization
-  async getTomTomRoute(route: RouteDetails) {
+  async getTomTomRoute(route: RouteDetails, preferredStartTime?: string, preferredArrivalTime?: string) {
+    const payload = { 
+      route,
+      preferred_start_time: preferredStartTime,
+      preferred_arrival_time: preferredArrivalTime
+    };
+    
+    console.log('TomTom API Request:', payload);
+    
     const response = await fetch(`${API_BASE_URL}/tomtom-route`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ route }),
+      body: JSON.stringify(payload),
+    });
+    
+    // Parse the JSON response regardless of status code
+    const data = await response.json();
+    
+    console.log('TomTom API Response:', { status: response.status, ok: response.ok, data });
+    
+    // If the response is not ok (400, 500, etc.), return the error data
+    if (!response.ok) {
+      return data;
+    }
+    
+    return data;
+  },
+
+  // Sunlight risk analysis
+  async getSunlightRisk(data: {
+    origin: { lat: number; lng: number };
+    destination: { lat: number; lng: number };
+    departure_time?: string;
+    route_coordinates?: [number, number][];
+  }) {
+    const response = await fetch(`${API_BASE_URL}/sunlight-risk`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
     });
     return response.json();
   },

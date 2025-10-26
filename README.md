@@ -4,11 +4,39 @@ An intelligent delivery route optimization system that combines real-time traffi
 
 ## 🚀 Features
 
-### 🗺️ Real Road-Based Routing
+### � Smart Location Search
+- **Intelligent Autocomplete**: Type location names and get instant suggestions
+- **Mapbox Geocoding**: Powered by Mapbox's global location database
+- **No Coordinates Needed**: Just type "San Francisco Airport" or "Stanford University"
+- **Auto-Fill**: Latitude and longitude filled automatically when you select a location
+
+### ️ Real Road-Based Routing
 - **TomTom Integration**: Routes follow actual road networks, highways, and streets
 - **Real-Time Traffic**: Current traffic conditions included in route calculations
 - **Smart Waypoint Optimization**: Automatically reorders stops for the shortest route
 - **Accurate Estimates**: Real driving distance, travel time, and traffic delays
+
+### ☀️ Sunlight Risk Analysis
+- **Astronomical Calculations**: Precise sun position based on location, date, and time
+- **Glare Detection**: Identifies when drivers face severe sun glare (sunrise/sunset)
+- **Night Risk Assessment**: Evaluates low-light visibility conditions
+- **Direction-Based Risk**: Calculates risk based on driving bearing relative to sun
+- **Segment Analysis**: Route broken down into segments with individual risk scores
+
+### 🚛 Professional Driver Schedule Optimizer
+- **FMCSA HOS Compliance**: Full Hours of Service regulation enforcement
+  - ✅ 30-minute break required after 8 hours of driving
+  - ✅ 11-hour driving limit per shift
+  - ✅ 14-hour on-duty window
+  - ✅ 10-hour rest period to reset limits
+- **Smart Break Scheduling**: ⭐ **NEW** - Breaks optimized for high-risk periods
+  - Automatically schedules mandatory breaks during dangerous sun glare times
+  - Combines HOS compliance with sunlight risk avoidance
+  - Reduces total trip time by eliminating separate safety waits
+  - Purple-highlighted "Strategic" breaks in UI
+- **Calendar Integration**: Select departure time and preferred arrival
+- **Intelligent Stop Insertion**: Automatic rest area selection based on HOS needs
+- **Safety Score**: Overall trip safety rating considering sun risk and compliance
 
 ### 🤖 AI-Powered Recommendations
 - **AWS Bedrock Claude AI**: Intelligent route and timing analysis
@@ -286,7 +314,16 @@ pip install -r requirements.txt
 - [ ] Route replay and analytics
 - [ ] Integration with logistics platforms
 
-## 📄 License
+## 📚 Additional Documentation
+
+- **[SUNLIGHT_RISK.md](SUNLIGHT_RISK.md)** - Sunlight risk analysis and astronomical calculations
+- **[LOCATION_AUTOCOMPLETE.md](LOCATION_AUTOCOMPLETE.md)** - Smart location search feature
+- **[TOMTOM_INTEGRATION.md](TOMTOM_INTEGRATION.md)** - TomTom API integration details
+- **[INTEGRATION.md](INTEGRATION.md)** - Frontend-backend integration guide
+- **[ROUTE_INTEGRATION.md](ROUTE_INTEGRATION.md)** - Route visualization details
+- **[FIXES.md](FIXES.md)** - Bug fixes and troubleshooting
+
+## �📄 License
 
 This project is part of AWS Hackathon 2025.
 
@@ -294,7 +331,7 @@ This project is part of AWS Hackathon 2025.
 
 - AWS Bedrock for AI services
 - TomTom for routing APIs
-- Mapbox for map visualization
+- Mapbox for map visualization and geocoding
 - shadcn/ui for UI components
 
 ---

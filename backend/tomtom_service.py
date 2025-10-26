@@ -6,9 +6,17 @@ load_dotenv()
 
 TOMTOM_API_KEY = os.getenv("TOMTOM_API_KEY", "")
 
-def get_tomtom_route(origin_lat, origin_lng, dest_lat, dest_lng, waypoints=None):
+def get_tomtom_route(origin_lat, origin_lng, dest_lat, dest_lng, waypoints=None, departure_time=None):
     """
     Get optimized route from TomTom API
+    
+    Args:
+        origin_lat: Starting latitude
+        origin_lng: Starting longitude
+        dest_lat: Destination latitude
+        dest_lng: Destination longitude
+        waypoints: Optional list of waypoint locations
+        departure_time: Optional ISO format datetime string for departure
     """
     if not TOMTOM_API_KEY:
         raise ValueError("TOMTOM_API_KEY not set in environment variables")
@@ -30,6 +38,10 @@ def get_tomtom_route(origin_lat, origin_lng, dest_lat, dest_lng, waypoints=None)
         "travelMode": "car",
         "computeBestOrder": "true"  # Optimize waypoint order
     }
+    
+    # Add departure time if provided for more accurate traffic data
+    if departure_time:
+        params["departAt"] = departure_time
     
     try:
         response = requests.get(url, params=params, timeout=10)

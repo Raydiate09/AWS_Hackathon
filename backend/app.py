@@ -4,8 +4,9 @@ import boto3
 import os
 import json
 from dotenv import load_dotenv
-from datetime import datetime
+from datetime import datetime, timezone
 from tomtom_service import get_tomtom_route
+from sunlight_service import calculate_sunlight_risk, calculate_driving_bearing, analyze_route_sunlight_risk
 import csv
 
 load_dotenv()
@@ -119,7 +120,7 @@ Keep the response concise and actionable.
                     "estimatedArrivalTime": delivery_window.get('endDate')
                 },
                 "metrics": {
-                    "distance": 50.5,  # Mock - calculate real distance
+                    "distance": 31.4,  # Mock - in miles (calculate real distance from route)
                     "estimatedTime": "2 hours",
                     "scores": {
                         "weather": 85,
@@ -269,6 +270,7 @@ def tomtom_route():
             "success": False,
             "error": str(e)
         }), 500
+
 @app.route('/api/crash-data', methods=['GET'])
 def get_crash_data():
     try:
@@ -280,6 +282,190 @@ def get_crash_data():
             "data": records
         })
     except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/api/sunlight-risk', methods=['POST'])
+def calculate_route_sunlight_risk():
+    """
+    Calculate sunlight risk for a route based on time and driving direction.
+    
+    Expected request body:
+    {
+        "origin": {"lat": float, "lng": float},
+        "destination": {"lat": float, "lng": float},
+        "departure_time": "ISO 8601 datetime string",
+        "route_coordinates": [[lng, lat], ...] (optional, from TomTom)
+    }
+    """
+    try:
+        data = request.json
+        
+        origin = data.get('origin', {})
+        destination = data.get('destination', {})
+        departure_str = data.get('departure_time')
+        route_coords = data.get('route_coordinates', [])
+        
+        if not all([origin.get('lat'), origin.get('lng'), 
+                   destination.get('lat'), destination.get('lng')]):
+            return jsonify({
+                "success": False,
+                "error": "Origin and destination coordinates required"
+            }), 400
+        
+        # Parse departure time
+        if departure_str:
+            try:
+                departure_time = datetime.fromisoformat(departure_str.replace('Z', '+00:00'))
+            except:
+                departure_time = datetime.now(timezone.utc)
+        else:
+            departure_time = datetime.now(timezone.utc)
+        
+        # If we have detailed route coordinates, analyze multiple segments
+        if route_coords and len(route_coords) > 1:
+            # Sample every Nth coordinate to create segments (to avoid too many calculations)
+            sample_rate = max(1, len(route_coords) // 10)  # Max 10 segments
+            sampled_coords = route_coords[::sample_rate]
+            
+            # Ensure we include the last coordinate
+            if sampled_coords[-1] != route_coords[-1]:
+                sampled_coords.append(route_coords[-1])
+            
+            # Create segments from coordinates
+            segments = []
+            # Assume average speed of 30 mph (48 km/h) for time estimation
+            avg_speed_deg_per_sec = 0.0002  # Rough approximation
+            
+            for i in range(len(sampled_coords) - 1):
+                from_coord = sampled_coords[i]
+                to_coord = sampled_coords[i + 1]
+                
+                # Calculate approximate duration based on distance
+                lat_diff = abs(to_coord[1] - from_coord[1])
+                lng_diff = abs(to_coord[0] - from_coord[0])
+                distance = (lat_diff ** 2 + lng_diff ** 2) ** 0.5
+                duration = int(distance / avg_speed_deg_per_sec)
+                
+                segments.append({
+                    'from_lat': from_coord[1],  # Remember: route_coords is [lng, lat]
+                    'from_lng': from_coord[0],
+                    'to_lat': to_coord[1],
+                    'to_lng': to_coord[0],
+                    'duration_seconds': duration,
+                    'name': f'Segment {i+1}'
+                })
+            
+            # Analyze all segments
+            analysis = analyze_route_sunlight_risk(segments, departure_time)
+            
+        else:
+            # Simple point-to-point analysis
+            bearing = calculate_driving_bearing(
+                origin['lat'], origin['lng'],
+                destination['lat'], destination['lng']
+            )
+            
+            # Use midpoint of route for sun calculation
+            mid_lat = (origin['lat'] + destination['lat']) / 2
+            mid_lng = (origin['lng'] + destination['lng']) / 2
+            
+            risk = calculate_sunlight_risk(mid_lat, mid_lng, bearing, departure_time)
+            
+            analysis = {
+                'overall_risk_score': risk['risk_score'],
+                'overall_risk_level': risk['risk_level'],
+                'departure_time': departure_time.isoformat(),
+                'segment_count': 1,
+                'segments': [{
+                    'segment_index': 0,
+                    'segment_name': 'Full Route',
+                    'start_time': departure_time.isoformat(),
+                    **risk
+                }],
+                'recommendations': [
+                    f"☀️ {risk['explanation']}",
+                    "✅ Consider sunglasses and functional sun visors" if risk['risk_score'] > 60 else
+                    "✅ Good visibility conditions"
+                ]
+            }
+        
+        return jsonify({
+            "success": True,
+            "data": analysis
+        })
+        
+    except Exception as e:
+        print(f"Sunlight risk calculation error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/api/optimize-driver-schedule', methods=['POST'])
+def optimize_driver_schedule():
+    """
+    Create HOS-compliant driver schedule with sunlight risk management.
+    
+    Expected request body:
+    {
+        "route_coordinates": [[lng, lat], ...],
+        "total_duration_seconds": int,
+        "departure_time": "ISO 8601 datetime string",
+        "preferred_arrival": "ISO 8601 datetime string" (optional)
+    }
+    """
+    try:
+        data = request.json
+        
+        route_coords = data.get('route_coordinates', [])
+        total_duration = data.get('total_duration_seconds', 0)
+        departure_str = data.get('departure_time')
+        arrival_str = data.get('preferred_arrival')
+        
+        if not route_coords or len(route_coords) < 2:
+            return jsonify({
+                "success": False,
+                "error": "Route coordinates required (minimum 2 points)"
+            }), 400
+        
+        # Parse departure time
+        if departure_str:
+            try:
+                departure_time = datetime.fromisoformat(departure_str.replace('Z', '+00:00'))
+            except:
+                departure_time = datetime.now(timezone.utc)
+        else:
+            departure_time = datetime.now(timezone.utc)
+        
+        # Parse preferred arrival (optional)
+        preferred_arrival = None
+        if arrival_str:
+            try:
+                preferred_arrival = datetime.fromisoformat(arrival_str.replace('Z', '+00:00'))
+            except:
+                pass
+        
+        # Create route segments
+        segments = create_route_segments_from_coordinates(route_coords, total_duration)
+        
+        # Optimize schedule
+        optimizer = DriverScheduleOptimizer()
+        schedule = optimizer.optimize_schedule(segments, departure_time, preferred_arrival)
+        
+        return jsonify({
+            "success": True,
+            "data": schedule
+        })
+        
+    except Exception as e:
+        print(f"Schedule optimization error: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({
             "success": False,
             "error": str(e)

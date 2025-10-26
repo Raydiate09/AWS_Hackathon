@@ -68,7 +68,7 @@ TOMTOM_API_KEY="your_actual_api_key_here"
    - See green line appear on map following real roads
 
 3. **View Metrics**:
-   - Distance: Actual driving distance in km
+   - Distance: Actual driving distance in miles
    - Travel Time: Estimated duration with current traffic
    - Traffic Delay: Extra time due to congestion
    - Arrival Time: Expected arrival timestamp

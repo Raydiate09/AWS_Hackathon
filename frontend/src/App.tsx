@@ -1,7 +1,7 @@
 import './App.css'
 import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { DateRange } from "react-day-picker";
 import { Check, Circle, Dot } from "lucide-react";
 import { 
@@ -32,36 +32,71 @@ export function CalendarRangeDemo() {
   );
 }
 
-function StepperDemo() {
+function StepperDemo({ 
+  origin, 
+  destination, 
+  stops = [] 
+}: {
+  origin?: { address: string; coordinates: { lat: number; lng: number } };
+  destination?: { address: string; coordinates: { lat: number; lng: number } };
+  stops?: { address: string; coordinates: { lat: number; lng: number } }[];
+}) {
   const [currentStep, setCurrentStep] = useState(1);
 
-  const steps = [
-    {
-      step: 1,
-      title: "Pickup at SFO",
-      description: "Package collected from San Francisco International Airport cargo terminal",
-    },
-    {
-      step: 2,
-      title: "Depart SFO Area",
-      description: "Leaving airport grounds and entering Highway 101 northbound",
-    },
-    {
-      step: 3,
-      title: "San Mateo to Palo Alto",
-      description: "Traveling through San Mateo and Palo Alto areas via US-101",
-    },
-    {
-      step: 4,
-      title: "Mountain View Transit",
-      description: "Passing through Mountain View and Sunnyvale on route to Santa Clara",
-    },
-    {
-      step: 5,
-      title: "Delivery at SCU",
-      description: "Final destination reached at Santa Clara University campus",
-    },
-  ];
+  // Reset to step 1 when route changes
+  useEffect(() => {
+    setCurrentStep(1);
+  }, [origin?.address, destination?.address, stops?.length]);
+
+  // Generate dynamic steps based on actual route
+  const generateSteps = () => {
+    const steps = [];
+    let stepNumber = 1;
+
+    // Add origin as first step
+    if (origin) {
+      steps.push({
+        step: stepNumber++,
+        title: `Pickup at ${origin.address.split(',')[0]}`,
+        description: `Package collected from ${origin.address}`,
+      });
+    }
+
+    // Add each stop
+    if (stops && stops.length > 0) {
+      stops.forEach((stop, index) => {
+        steps.push({
+          step: stepNumber++,
+          title: `Stop ${index + 1}: ${stop.address.split(',')[0]}`,
+          description: `Delivery stop at ${stop.address}`,
+        });
+      });
+    }
+
+    // Add destination as last step
+    if (destination) {
+      steps.push({
+        step: stepNumber++,
+        title: `Delivery at ${destination.address.split(',')[0]}`,
+        description: `Final destination: ${destination.address}`,
+      });
+    }
+
+    // If no route is set, show placeholder
+    if (steps.length === 0) {
+      return [
+        {
+          step: 1,
+          title: "No Route Selected",
+          description: "Please enter origin and destination to see delivery progress",
+        }
+      ];
+    }
+
+    return steps;
+  };
+
+  const steps = generateSteps();
 
   const getStepState = (stepNumber: number) => {
     if (stepNumber < currentStep) return "completed";
@@ -222,7 +257,11 @@ function App() {
 
       <div className="p-6">
         <h2 className="text-2xl font-bold mb-4">Delivery Progress</h2>
-        <StepperDemo />
+        <StepperDemo 
+          origin={routeData.origin}
+          destination={routeData.destination}
+          stops={routeData.stops}
+        />
       </div>
 
       <div className="p-6">

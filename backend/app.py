@@ -690,7 +690,7 @@ def get_crash_data():
     try:
         with open(CRASH_DATASET_PATH, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
-            records = list(reader)[:100]
+            records = list(reader)[:1000]
         return jsonify({
             "success": True,
             "data": records

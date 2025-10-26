@@ -1,0 +1,15 @@
+# Combined requirements for DTS Project (Frontend + Backend)
+# Install with: pip install -r requirements.txt
+
+# AWS SDK
+boto3==1.40.55
+
+# Web Framework
+flask==3.0.0
+flask-cors==4.0.0
+
+# Environment Variables
+python-dotenv==1.1.1
+
+# HTTP Requests
+requests==2.31.0

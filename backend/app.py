@@ -129,6 +129,44 @@ def health_check():
         }
     })
 
+@app.route('/api/timezone', methods=['POST'])
+def get_timezone():
+    """Get timezone for a given coordinate (latitude, longitude)"""
+    try:
+        from timezonefinder import TimezoneFinder
+        data = request.get_json(silent=True) or {}
+        
+        lat = data.get('lat')
+        lng = data.get('lng')
+        
+        if lat is None or lng is None:
+            return jsonify({
+                "success": False,
+                "error": "Missing latitude or longitude"
+            }), 400
+        
+        tf = TimezoneFinder()
+        timezone_str = tf.timezone_at(lat=lat, lng=lng)
+        
+        if timezone_str is None:
+            return jsonify({
+                "success": False,
+                "error": "Could not determine timezone"
+            }), 400
+        
+        return jsonify({
+            "success": True,
+            "timezone": timezone_str
+        })
+    except Exception as e:
+        print(f"Error getting timezone: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
 @app.route('/api/optimize-route', methods=['POST'])
 def optimize_route():
     try:

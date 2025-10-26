@@ -78,6 +78,7 @@ export function RouteOptimizationForm({ onRouteOptimized }: RouteOptimizationFor
   const [routeResult, setRouteResult] = useState<GoogleRouteResponse | null>(null);
   const [sunlightResult, setSunlightResult] = useState<SunlightRiskResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [destinationTimezone, setDestinationTimezone] = useState<string | null>(null);
 
   const travelSeconds = useMemo(() => {
     if (!routeResult?.summary) {
@@ -197,6 +198,20 @@ export function RouteOptimizationForm({ onRouteOptimized }: RouteOptimizationFor
     setSunlightResult(null);
 
     try {
+      // Fetch destination timezone for accurate arrival time display
+      try {
+        const tzResponse = await apiService.getTimezone(
+          destination.coordinates.lat,
+          destination.coordinates.lng
+        );
+        if (tzResponse.success) {
+          setDestinationTimezone(tzResponse.timezone);
+        }
+      } catch (tzErr) {
+        console.warn('Could not fetch timezone:', tzErr);
+        // Continue without timezone, will use default
+      }
+
       // Only send times if they have actual values
       const startTime = preferredStartTime ? preferredStartTime : undefined;
       const arrivalTime = preferredArrivalTime ? preferredArrivalTime : undefined;
@@ -225,7 +240,15 @@ export function RouteOptimizationForm({ onRouteOptimized }: RouteOptimizationFor
       if (preferredArrivalTime) {
         const requiredArrival = new Date(preferredArrivalTime);
         const responseTravelSeconds = response.summary?.duration_in_traffic_seconds ?? response.summary?.duration_seconds;
-        const departureForValidation = startTime ? new Date(startTime) : null;
+        
+        // Get departure time for validation (use provided or auto-generated current time)
+        let departureForValidation: Date | null = null;
+        if (preferredStartTime) {
+          departureForValidation = new Date(preferredStartTime);
+        } else {
+          // Use current time for validation when not explicitly provided
+          departureForValidation = new Date();
+        }
 
         if (responseTravelSeconds && departureForValidation) {
           const estimatedArrival = new Date(departureForValidation.getTime() + responseTravelSeconds * 1000);
@@ -541,17 +564,32 @@ export function RouteOptimizationForm({ onRouteOptimized }: RouteOptimizationFor
                 <p className="text-xs">{Math.round(travelSeconds / 60)} minutes ({(travelSeconds / 3600).toFixed(1)} hours)</p>
               </div>
               <div>
-                <p className="text-sm font-medium">Estimated Arrival:</p>
+                <p className="text-sm font-medium">Estimated Arrival (at destination):</p>
                 <p className="text-xs">
-                  {preferredStartTime && travelSeconds
-                    ? new Date(new Date(preferredStartTime).getTime() + (travelSeconds * 1000)).toLocaleString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                        hour: 'numeric',
-                        minute: '2-digit',
-                        timeZoneName: 'short'
-                      })
-                    : 'Provide a start time to estimate arrival'}
+                  {travelSeconds
+                    ? (() => {
+                        // Use preferred start time if provided, otherwise use current time
+                        const startDateTime = preferredStartTime
+                          ? new Date(preferredStartTime)
+                          : new Date();
+                        const arrivalTime = new Date(startDateTime.getTime() + (travelSeconds * 1000));
+                        
+                        // Use fetched destination timezone, fallback to America/New_York for coast-to-coast
+                        const tz = destinationTimezone || 'America/New_York';
+                        
+                        // Format in destination timezone using Intl API
+                        const formatter = new Intl.DateTimeFormat('en-US', {
+                          timeZone: tz,
+                          month: 'short',
+                          day: 'numeric',
+                          hour: 'numeric',
+                          minute: '2-digit',
+                          second: '2-digit',
+                          timeZoneName: 'short'
+                        });
+                        return formatter.format(arrivalTime);
+                      })()
+                    : 'Load route to estimate arrival'}
                 </p>
               </div>
             </div>

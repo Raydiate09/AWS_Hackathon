@@ -15,5 +15,5 @@ python-dotenv==1.1.1
 requests==2.31.0
 
 # Timezone Support
-timezonefinder==6.5.0
+timezonefinder==5.2.0
 pytz==2024.1

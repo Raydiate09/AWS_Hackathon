@@ -152,6 +152,18 @@ export const apiService = {
     return data;
   },
 
+  // Get timezone for a location
+  async getTimezone(lat: number, lng: number) {
+    const response = await fetch(`${API_BASE_URL}/timezone`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ lat, lng }),
+    });
+    return response.json();
+  },
+
   // Sunlight risk analysis
   async getSunlightRisk(data: {
     origin: { lat: number; lng: number };

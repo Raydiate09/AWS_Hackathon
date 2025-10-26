@@ -1,10 +1,21 @@
 import os
+from pathlib import Path
 import requests
 from datetime import datetime, timezone
 from typing import List, Optional
 from dotenv import load_dotenv
 
-load_dotenv(dotenv_path="../.env")
+# Load environment variables from the backend folder first, then fall back to repo root
+env_candidate_paths = [
+    Path(__file__).resolve().parent / ".env",
+    Path(__file__).resolve().parent.parent / ".env",
+]
+for env_path in env_candidate_paths:
+    if env_path.exists():
+        load_dotenv(env_path)
+        break
+else:
+    load_dotenv()
 
 GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY", "")
 

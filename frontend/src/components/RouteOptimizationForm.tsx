@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { LocationInput } from "@/components/ui/location-input";
 import { apiService, type OptimizeRouteResponse, type Location } from "@/services/api";
@@ -34,6 +34,16 @@ interface GoogleRouteLeg {
   coordinates: [number, number][];
 }
 
+interface SegmentWeather {
+  description?: string;
+  temperature?: number;
+  feels_like?: number;
+  humidity?: number;
+  wind_speed?: number;
+  icon?: string;
+  timestamp?: number;
+}
+
 interface GoogleRouteSegment {
   leg_index: number;
   step_index: number;
@@ -43,6 +53,7 @@ interface GoogleRouteSegment {
   duration_in_traffic_seconds?: number;
   instruction: string;
   travel_mode: string;
+  weather?: SegmentWeather | null;
 }
 
 interface GoogleRouteResponse {
@@ -88,6 +99,10 @@ export function RouteOptimizationForm({ onRouteOptimized }: RouteOptimizationFor
     const baseDuration = routeResult.summary.duration_seconds;
     return (durationWithTraffic ?? baseDuration ?? 0);
   }, [routeResult]);
+
+  const hasSegmentWeather = useMemo(() => {
+    return Boolean(routeResult?.segments?.some((segment) => segment?.weather));
+  }, [routeResult?.segments]);
   
   // Form inputs using Location objects
   const [origin, setOrigin] = useState<Location>({
@@ -109,6 +124,56 @@ export function RouteOptimizationForm({ onRouteOptimized }: RouteOptimizationFor
   // Professional Driver Schedule
   const [preferredStartTime, setPreferredStartTime] = useState<string>("");
   const [preferredArrivalTime, setPreferredArrivalTime] = useState<string>("");
+
+  const departureTimeForWeather = useMemo(() => {
+    if (!preferredStartTime) {
+      return new Date();
+    }
+
+    const parsed = new Date(preferredStartTime);
+    if (Number.isNaN(parsed.getTime())) {
+      return new Date();
+    }
+
+    return parsed;
+  }, [preferredStartTime]);
+
+  const formatTemperature = (temp?: number | null) => {
+    if (typeof temp !== "number" || Number.isNaN(temp)) {
+      return "—";
+    }
+    const fahrenheit = (temp * 9) / 5 + 32;
+    return `${temp.toFixed(1)}°C / ${fahrenheit.toFixed(1)}°F`;
+  };
+
+  const formatWind = (speed?: number | null) => {
+    if (typeof speed !== "number" || Number.isNaN(speed)) {
+      return "—";
+    }
+    const mph = speed * 2.23694;
+    return `${speed.toFixed(1)} m/s (${mph.toFixed(1)} mph)`;
+  };
+
+  const formatSegmentWindow = (start: Date, end: Date) => {
+    const formatter = new Intl.DateTimeFormat(undefined, {
+      hour: "numeric",
+      minute: "2-digit"
+    });
+    return `${formatter.format(start)} – ${formatter.format(end)}`;
+  };
+
+  const formatForecastTimestamp = (timestamp?: number) => {
+    if (!timestamp) {
+      return "Forecast time unavailable";
+    }
+    const dt = new Date(timestamp * 1000);
+    return dt.toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit"
+    });
+  };
 
   // Clear error and optionally clear arrival time if it was an insufficient delivery time error
   const handleDismissError = () => {
@@ -591,6 +656,108 @@ export function RouteOptimizationForm({ onRouteOptimized }: RouteOptimizationFor
                       })()
                     : 'Load route to estimate arrival'}
                 </p>
+              </div>
+            </div>
+          )}
+
+          {hasSegmentWeather && routeResult.segments && (
+            <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-lg" role="img" aria-label="weather">🌦️</span>
+                <h4 className="font-semibold text-blue-900">Segment Weather Forecasts</h4>
+              </div>
+              <p className="text-xs text-blue-800 mb-3">
+                Conditions reflect the expected weather as you enter each segment based on your current departure time.
+              </p>
+              <div className="space-y-3">
+                {(() => {
+                  const segments = routeResult.segments ?? [];
+                  const cards: ReactNode[] = [];
+                  let accumulatedSeconds = 0;
+
+                  segments.forEach((segment, idx) => {
+                    const segmentDuration = segment.duration_seconds ?? 0;
+                    const segmentStart = new Date(departureTimeForWeather.getTime() + accumulatedSeconds * 1000);
+                    const segmentEnd = new Date(segmentStart.getTime() + segmentDuration * 1000);
+                    const weather = segment.weather;
+
+                    if (weather) {
+                      const key = `segment-weather-${segment.leg_index}-${segment.step_index}`;
+                      cards.push(
+                        <div
+                          key={key}
+                          className="p-3 bg-white border border-blue-100 rounded-md shadow-sm"
+                        >
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1">
+                              <p className="text-sm font-semibold text-blue-900">Segment {idx + 1}</p>
+                              {segment.instruction && (
+                                <p
+                                  className="text-xs text-blue-700 mt-1"
+                                  dangerouslySetInnerHTML={{ __html: segment.instruction }}
+                                />
+                              )}
+                            </div>
+                            <div className="flex flex-col items-end text-xs text-blue-700">
+                              <p>{formatSegmentWindow(segmentStart, segmentEnd)}</p>
+                              <p>
+                                {(segmentDuration / 60) >= 1
+                                  ? `${Math.round(segmentDuration / 60)} min`
+                                  : '< 1 min'}
+                              </p>
+                            </div>
+                            {weather.icon && (
+                              <img
+                                src={`https://openweathermap.org/img/wn/${weather.icon}@2x.png`}
+                                alt={weather.description ?? 'segment weather icon'}
+                                className="w-12 h-12"
+                              />
+                            )}
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3 mt-3 text-xs text-blue-900">
+                            <div>
+                              <p className="font-medium">Conditions</p>
+                              <p className="capitalize">{weather.description ?? 'Not available'}</p>
+                            </div>
+                            <div>
+                              <p className="font-medium">Forecast Issued</p>
+                              <p>{formatForecastTimestamp(weather.timestamp)}</p>
+                            </div>
+                            <div>
+                              <p className="font-medium">Temperature</p>
+                              <p>{formatTemperature(weather.temperature)}</p>
+                            </div>
+                            <div>
+                              <p className="font-medium">Feels Like</p>
+                              <p>{formatTemperature(weather.feels_like)}</p>
+                            </div>
+                            <div>
+                              <p className="font-medium">Humidity</p>
+                              <p>{typeof weather.humidity === 'number' ? `${weather.humidity}%` : '—'}</p>
+                            </div>
+                            <div>
+                              <p className="font-medium">Wind</p>
+                              <p>{formatWind(weather.wind_speed)}</p>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    accumulatedSeconds += segmentDuration;
+                  });
+
+                  if (cards.length === 0) {
+                    return (
+                      <p className="text-xs text-blue-700">
+                        Weather data is unavailable for this route at the moment.
+                      </p>
+                    );
+                  }
+
+                  return cards;
+                })()}
               </div>
             </div>
           )}

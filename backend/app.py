@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 from tomtom_service import get_tomtom_route
 from google_maps_service import get_google_maps_route
 from sunlight_service import calculate_sunlight_risk, calculate_driving_bearing, analyze_route_sunlight_risk
+from weather_service import WeatherService
 import csv
 
 load_dotenv()
@@ -404,11 +405,17 @@ def google_maps_route():
         )
 
         if result.get('success'):
+            # Initialize weather service
+            weather_service = WeatherService()
+            
+            # Get weather forecasts for route segments
+            segments_with_weather = weather_service.get_route_segment_weather(result.get('segments', []))
+            
             return jsonify({
                 "success": True,
                 "coordinates": result.get('coordinates', []),
                 "summary": result.get('summary', {}),
-                "segments": result.get('segments', []),
+                "segments": segments_with_weather,
                 "legs": result.get('legs', [])
             })
 

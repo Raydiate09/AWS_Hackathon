@@ -31,10 +31,6 @@ export function CalendarRangeDemo() {
   );
 }
 
-function ButtonDemo() {
-  return <Button>Click me</Button>;
-}
-
 function StepperDemo() {
   const [currentStep, setCurrentStep] = useState(1);
 
@@ -119,14 +115,61 @@ function StepperDemo() {
 }
 
 function App() {
+  const [isFetchingRoute, setIsFetchingRoute] = useState(false);
+  const [routeCoordinates, setRouteCoordinates] = useState<[number, number][]>([]);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
+  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:5003";
+
+  const handleLoadRoute = async () => {
+    setIsFetchingRoute(true);
+    setFetchError(null);
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/tomtom-route`);
+
+      if (!response.ok) {
+        throw new Error(`Route request failed with status ${response.status}`);
+      }
+
+      const payload = await response.json();
+
+      if (!payload?.success || !Array.isArray(payload.coordinates)) {
+        throw new Error(payload?.message ?? "Route payload was empty");
+      }
+
+      if (!payload.coordinates.length) {
+        throw new Error("Route did not include any coordinates");
+      }
+
+      setRouteCoordinates(payload.coordinates);
+    } catch (error) {
+      console.error(error);
+      const message = error instanceof Error ? error.message : "Unexpected route error";
+      setFetchError(message);
+      setRouteCoordinates([]);
+    } finally {
+      setIsFetchingRoute(false);
+    }
+  };
+
   return (
     <div className="landing-page">
       <h1>DTS</h1>
-      <ButtonDemo />
+      <div className="flex items-center gap-3">
+        <Button onClick={handleLoadRoute} disabled={isFetchingRoute}>
+          {isFetchingRoute ? "Loading route..." : "Load TomTom Route"}
+        </Button>
+        {fetchError && (
+          <span className="text-sm text-red-500">
+            {fetchError}
+          </span>
+        )}
+      </div>
       <CalendarRangeDemo />
       <StepperDemo />
       <div style={{ height: '500px', width: '100%' }}>
-        <MapboxExample />
+        <MapboxExample coordinates={routeCoordinates} />
       </div>
     </div>
   )

@@ -45,11 +45,12 @@ def test():
     }), 200
 
 # Import and register all routes
-from routes import optimize, vehicles, dashboard
+from routes import optimize, vehicles, dashboard, tomtom
 
 app.register_blueprint(optimize.bp, url_prefix='/api')
 app.register_blueprint(vehicles.bp, url_prefix='/api')
 app.register_blueprint(dashboard.bp, url_prefix='/api')
+app.register_blueprint(tomtom.bp, url_prefix='/api')
 
 # Root endpoint
 @app.route('/', methods=['GET'])

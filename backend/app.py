@@ -5,6 +5,7 @@ import os
 import json
 from dotenv import load_dotenv
 from datetime import datetime
+import csv
 
 load_dotenv()
 
@@ -193,6 +194,22 @@ def validate_route():
         "success": True,
         "data": validation
     })
+
+@app.route('/api/crash-data', methods=['GET'])
+def get_crash_data():
+    try:
+        with open('../crashdata2022-present.csv', 'r') as f:
+            reader = csv.DictReader(f)
+            records = list(reader)[:100]
+        return jsonify({
+            "success": True,
+            "data": records
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5001)

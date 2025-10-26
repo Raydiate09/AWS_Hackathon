@@ -118,6 +118,62 @@ function StepperDemo() {
   );
 }
 
+function CrashDataDemo() {
+  const [data, setData] = useState<Record<string, unknown>[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchCrashData = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch('http://localhost:5001/api/crash-data');
+      const result = await response.json();
+      if (result.success) {
+        setData(result.data);
+      } else {
+        setError(result.error);
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="crash-data-demo">
+      <Button onClick={fetchCrashData} disabled={loading}>
+        {loading ? 'Loading...' : 'Fetch Crash Data'}
+      </Button>
+      {error && <p style={{ color: 'red' }}>{error}</p>}
+      {data.length > 0 && (
+        <div style={{ marginTop: '20px' }}>
+          <h3>First 100 Crash Records</h3>
+          <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+            <thead>
+              <tr>
+                {Object.keys(data[0]).map(key => (
+                  <th key={key} style={{ border: '1px solid #ddd', padding: '8px' }}>{key}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((record, index) => (
+                <tr key={index}>
+                  {Object.values(record).map((value, i) => (
+                    <td key={i} style={{ border: '1px solid #ddd', padding: '8px' }}>{String(value)}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function App() {
   return (
     <div className="landing-page">
@@ -125,6 +181,7 @@ function App() {
       <ButtonDemo />
       <CalendarRangeDemo />
       <StepperDemo />
+      <CrashDataDemo />
       <div style={{ height: '500px', width: '100%' }}>
         <MapboxExample />
       </div>

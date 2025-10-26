@@ -396,7 +396,7 @@ function StepperDemo({
                     {step.segment.weather?.icon && (
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <span className="inline-flex items-center justify-center py-1 px-1 bg-blue-100 border border-blue-300 rounded">
+                          <span className="inline-flex items-center justify-center py-1 px-1 bg-blue-200 border border-blue-400 rounded">
                             <img
                               src={`https://openweathermap.org/img/wn/${step.segment.weather.icon}@2x.png`}
                               alt={step.segment.weather.description ?? 'Weather'}
@@ -449,8 +449,8 @@ function StepperDemo({
                       <>
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <span className="inline-flex items-center justify-center py-1 px-1 bg-red-50 border border-red-200 rounded">
-                              <CornerUpLeft className="w-3 h-3 text-red-500" strokeWidth={3} />
+                            <span className="inline-flex items-center justify-center py-1 px-1 bg-red-100 border border-red-300 rounded">
+                              <CornerUpLeft className="w-3 h-3 text-red-600" strokeWidth={3} />
                             </span>
                           </TooltipTrigger>
                           <TooltipContent>
@@ -459,8 +459,8 @@ function StepperDemo({
                         </Tooltip>
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <span className="inline-flex items-center justify-center py-1 px-1 bg-amber-50 border border-amber-200 rounded ml-1">
-                              <TriangleAlert className="w-3 h-3 text-amber-600" />
+                            <span className="inline-flex items-center justify-center py-1 px-1 bg-amber-100 border border-amber-300 rounded ml-1">
+                              <TriangleAlert className="w-3 h-3 text-amber-700" />
                             </span>
                           </TooltipTrigger>
                           <TooltipContent>
@@ -472,8 +472,8 @@ function StepperDemo({
                     {leftTurnRisk && (!step.segmentRisk?.crashCount || step.segmentRisk.crashCount < 3) && (
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <span className="inline-flex items-center justify-center py-1 px-1 bg-red-50 border border-red-200 rounded">
-                            <CornerUpLeft className="w-3 h-3 text-red-500" strokeWidth={3} />
+                          <span className="inline-flex items-center justify-center py-1 px-1 bg-red-100 border border-red-300 rounded">
+                            <CornerUpLeft className="w-3 h-3 text-red-600" strokeWidth={3} />
                           </span>
                         </TooltipTrigger>
                         <TooltipContent>

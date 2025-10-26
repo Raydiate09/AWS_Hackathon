@@ -19,16 +19,12 @@ import MapboxExample from "@/components/MapboxExample";
 import { RouteOptimizationForm } from "@/components/RouteOptimizationForm";
 import { apiService } from "@/services/api";
 import {
-  NavigationMenu,
-  NavigationMenuList,
-  NavigationMenuItem,
-  NavigationMenuLink,
-} from "@/components/ui/navigation-menu";
-import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import CustomersPage from "@/pages/CustomersPage";
+import InvestorsPage from "@/pages/InvestorsPage";
 
 type RouteLeg = {
   leg_index: number;
@@ -876,6 +872,7 @@ function CrashDataDemo({
 }
 
 function App() {
+  const [currentPage, setCurrentPage] = useState<"route" | "customers" | "investors">("route");
   const [routeData, setRouteData] = useState<{
     origin?: { address: string; coordinates: { lat: number; lng: number } };
     destination?: { address: string; coordinates: { lat: number; lng: number } };
@@ -898,50 +895,82 @@ function App() {
 
   return (
     <div className="landing-page">
-      <NavigationMenu className="w-full px-6 py-4 justify-start">
-        <NavigationMenuList>
-          <NavigationMenuItem>
-            <NavigationMenuLink className="text-4xl font-bold text-left">
-              DTS
-            </NavigationMenuLink>
-          </NavigationMenuItem>
-        </NavigationMenuList>
-      </NavigationMenu>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6">
-        <div className="space-y-4">
-          <RouteOptimizationForm onRouteOptimized={handleRouteOptimized} />
+      <div className="w-full px-6 py-4 flex items-center justify-between">
+        <div className="text-4xl font-bold text-left cursor-pointer" onClick={() => setCurrentPage("route")}>
+          DTS
         </div>
+        <div className="flex gap-2">
+          <Button
+            variant={currentPage === "route" ? "default" : "outline"}
+            onClick={() => setCurrentPage("route")}
+          >
+            Route Optimizer
+          </Button>
+          <Button
+            variant={currentPage === "customers" ? "default" : "outline"}
+            onClick={() => setCurrentPage("customers")}
+          >
+            Why DTS
+          </Button>
+          <Button
+            variant={currentPage === "investors" ? "default" : "outline"}
+            onClick={() => setCurrentPage("investors")}
+          >
+            Investors
+          </Button>
+        </div>
+      </div>
 
-        <div className="space-y-4">
-          {/* <h2 className="text-2xl font-bold">Route Map</h2> */}
-          <div style={{ height: '500px', width: '100%' }}>
-            <MapboxExample
+      {currentPage === "route" && (
+        <>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6">
+            <div className="space-y-4">
+              <RouteOptimizationForm onRouteOptimized={handleRouteOptimized} />
+            </div>
+
+            <div className="space-y-4">
+              {/* <h2 className="text-2xl font-bold">Route Map</h2> */}
+              <div style={{ height: '500px', width: '100%' }}>
+                <MapboxExample
+                  origin={routeData.origin}
+                  destination={routeData.destination}
+                  stops={routeData.stops}
+                  routeCoordinates={routeData.routeCoordinates}
+                  segments={routeData.segments}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="p-6">
+            <h2 className="text-2xl font-bold mb-4">Steps</h2>
+            <StepperDemo 
               origin={routeData.origin}
               destination={routeData.destination}
               stops={routeData.stops}
-              routeCoordinates={routeData.routeCoordinates}
+              legs={routeData.legs}
               segments={routeData.segments}
             />
           </div>
+
+          <div className="p-6">
+            <h2 className="text-2xl font-bold mb-4">Crash Hotspots</h2>
+            <CrashDataDemo legs={routeData.legs} segments={routeData.segments} />
+          </div>
+        </>
+      )}
+
+      {currentPage === "customers" && (
+        <div className="container mx-auto px-4 py-8">
+          <CustomersPage />
         </div>
-      </div>
+      )}
 
-      <div className="p-6">
-        <h2 className="text-2xl font-bold mb-4">Steps</h2>
-        <StepperDemo 
-          origin={routeData.origin}
-          destination={routeData.destination}
-          stops={routeData.stops}
-          legs={routeData.legs}
-          segments={routeData.segments}
-        />
-      </div>
-
-      <div className="p-6">
-        <h2 className="text-2xl font-bold mb-4">Crash Hotspots</h2>
-        <CrashDataDemo legs={routeData.legs} segments={routeData.segments} />
-      </div>
+      {currentPage === "investors" && (
+        <div className="container mx-auto px-4 py-8">
+          <InvestorsPage />
+        </div>
+      )}
     </div>
   );
 }

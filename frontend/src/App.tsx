@@ -1,7 +1,7 @@
 import './App.css'
 import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import type { DateRange } from "react-day-picker";
 import { Check, Circle, Dot, CornerUpLeft } from "lucide-react";
 import { 
@@ -11,8 +11,10 @@ import {
   StepperTrigger, 
   StepperTitle, 
   StepperDescription,
-  getSegmentRiskScore
+  getSegmentRiskScore,
+  primeCrashSummariesForSegments
 } from "@/components/ui/stepper";
+import type { SegmentRiskScore, StepperSegmentInfo } from "@/components/ui/stepper";
 import MapboxExample from "@/components/MapboxExample";
 import { RouteOptimizationForm } from "@/components/RouteOptimizationForm";
 import { apiService } from "@/services/api";
@@ -78,11 +80,30 @@ function StepperDemo({
   segments?: RouteSegment[];
 }) {
   const [currentStep, setCurrentStep] = useState(1);
+  const [segmentRiskMap, setSegmentRiskMap] = useState<Record<string, SegmentRiskScore | null>>({});
+  const getSegmentKey = useCallback((segment?: RouteSegment) => {
+    if (!segment) return "segment-unknown";
+    const legPart = segment.leg_index != null ? `leg-${segment.leg_index}` : "leg-x";
+    const stepPart = segment.step_index != null ? `step-${segment.step_index}` : "step-x";
+
+    if (segment.coordinates && segment.coordinates.length > 0) {
+      const first = segment.coordinates[0];
+      const last = segment.coordinates[segment.coordinates.length - 1];
+      return `${legPart}-${stepPart}-${first[0].toFixed(5)},${first[1].toFixed(5)}-${last[0].toFixed(5)},${last[1].toFixed(5)}`;
+    }
+
+    if (segment.instruction) {
+      return `${legPart}-${stepPart}-${segment.instruction.slice(0, 32)}`;
+    }
+
+    return `${legPart}-${stepPart}-${segment.distance_meters ?? "dist"}`;
+  }, []);
   type StepDefinition = {
     step: number;
     title: string;
     description: string;
     segment?: RouteSegment;
+    segmentRisk?: SegmentRiskScore | null;
     totalRisk?: number;
   };
 
@@ -90,6 +111,61 @@ function StepperDemo({
   useEffect(() => {
     setCurrentStep(1);
   }, [origin?.address, destination?.address, stops?.length, legs?.length, segments?.length]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const computeSegmentRisks = async () => {
+      if (!segments || segments.length === 0) {
+        if (!cancelled) {
+          setSegmentRiskMap({});
+        }
+        return;
+      }
+
+      if (!cancelled) {
+        setSegmentRiskMap({});
+      }
+
+      const stepperSegments: StepperSegmentInfo[] = segments.map((segment) => ({
+        leg_index: segment.leg_index,
+        step_index: segment.step_index,
+        coordinates: segment.coordinates,
+        distance_meters: segment.distance_meters,
+        duration_seconds: segment.duration_seconds,
+        duration_in_traffic_seconds: segment.duration_in_traffic_seconds,
+        travel_mode: segment.travel_mode,
+        instruction: segment.instruction,
+      }));
+
+      await primeCrashSummariesForSegments(stepperSegments);
+
+      const results = await Promise.all(
+        stepperSegments.map(async (segmentInfo, index) => {
+          const segment = segments[index];
+          const key = getSegmentKey(segment);
+          try {
+            const risk = await getSegmentRiskScore(segmentInfo);
+            return [key, risk] as const;
+          } catch (error) {
+            console.error("Failed to calculate segment risk", error);
+            return [key, null] as const;
+          }
+        })
+      );
+
+      if (!cancelled) {
+        const mapped = Object.fromEntries(results) as Record<string, SegmentRiskScore | null>;
+        setSegmentRiskMap(mapped);
+      }
+    };
+
+    computeSegmentRisks();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [segments, getSegmentKey]);
 
   // Generate dynamic steps based on actual route
   const generateSteps = () => {
@@ -130,16 +206,23 @@ function StepperDemo({
 
           const legSegments = (segments || []).filter((segment) => segment.leg_index === entry.leg.leg_index);
           let totalRisk = 0;
+          let incidentCount = 0;
+
           for (const seg of legSegments) {
-            const riskData = getSegmentRiskScore({
-              distance_meters: seg.distance_meters,
-              duration_seconds: seg.duration_seconds,
-              duration_in_traffic_seconds: seg.duration_in_traffic_seconds,
-              travel_mode: seg.travel_mode,
-              instruction: seg.instruction,
-            });
-            if (riskData.score) totalRisk += riskData.score;
+            const riskData = segmentRiskMap[getSegmentKey(seg)];
+            if (riskData?.score != null) {
+              totalRisk += riskData.score;
+            }
+            if (riskData?.crashCount) {
+              incidentCount += riskData.crashCount;
+            }
           }
+
+          if (incidentCount > 0) {
+            descriptionParts.push(`${incidentCount} nearby incidents`);
+          }
+
+          const roundedRisk = totalRisk > 0 ? Math.round(totalRisk) : incidentCount > 0 ? 0 : undefined;
 
           return {
             step: index + 1,
@@ -148,7 +231,8 @@ function StepperDemo({
               ? descriptionParts.join(" • ")
               : "Distance and duration unavailable",
             segment: undefined,
-            totalRisk,
+            segmentRisk: undefined,
+            totalRisk: roundedRisk,
           };
         }
 
@@ -173,11 +257,17 @@ function StepperDemo({
           segmentParts.push(`${segmentDurationMinutes} min`);
         }
 
+        const segmentRisk = segmentRiskMap[getSegmentKey(segment)] ?? null;
+        if (segmentRisk?.crashCount) {
+          segmentParts.push(`${segmentRisk.crashCount} nearby incidents`);
+        }
+
         return {
           step: index + 1,
           title: `Segment ${segment.step_index + 1}`,
           description: segmentParts.length > 0 ? segmentParts.join(" • ") : "Segment details unavailable",
           segment,
+          segmentRisk,
           totalRisk: undefined,
         };
       });
@@ -193,6 +283,7 @@ function StepperDemo({
         title: `Pickup at ${origin.address.split(',')[0]}`,
         description: `Package collected from ${origin.address}`,
         segment: undefined,
+        segmentRisk: undefined,
         totalRisk: undefined,
       });
     }
@@ -205,6 +296,7 @@ function StepperDemo({
           title: `Stop ${index + 1}: ${stop.address.split(',')[0]}`,
           description: `Delivery stop at ${stop.address}`,
           segment: undefined,
+          segmentRisk: undefined,
           totalRisk: undefined,
         });
       });
@@ -217,6 +309,7 @@ function StepperDemo({
         title: `Delivery at ${destination.address.split(',')[0]}`,
         description: `Final destination: ${destination.address}`,
         segment: undefined,
+        segmentRisk: undefined,
         totalRisk: undefined,
       });
     }
@@ -229,6 +322,7 @@ function StepperDemo({
           title: "No Route Selected",
           description: "Please enter origin and destination to see steps",
           segment: undefined,
+          segmentRisk: undefined,
           totalRisk: undefined,
         }
       ];
@@ -254,7 +348,13 @@ function StepperDemo({
           const leftTurnRisk = step.segment?.instruction?.includes("Turn <b>left</b>") ?? false;
 
           return (
-            <StepperItem key={step.step} step={step.step} segmentInfo={step.segment} totalRisk={step.totalRisk}>
+            <StepperItem
+              key={step.step}
+              step={step.step}
+              segmentInfo={step.segment}
+              segmentRisk={step.segmentRisk}
+              totalRisk={step.totalRisk}
+            >
               {!isLastStep && <StepperSeparator />}
 
               <StepperTrigger>
@@ -671,11 +771,11 @@ function App() {
 
   return (
     <div className="landing-page">
-      <NavigationMenu className="max-w-screen-xl px-6 py-4">
+      <NavigationMenu className="w-full px-6 py-4 justify-start">
         <NavigationMenuList>
           <NavigationMenuItem>
-            <NavigationMenuLink className="text-2xl font-bold text-left">
-              DTS - Delivery Time Slot Optimization
+            <NavigationMenuLink className="text-4xl font-bold text-left">
+              DTS
             </NavigationMenuLink>
           </NavigationMenuItem>
         </NavigationMenuList>

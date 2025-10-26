@@ -168,4 +168,28 @@ export const apiService = {
     });
     return response.json();
   },
+
+  async analyzeCrashProximity(data: {
+    segments: Array<{
+      leg_index?: number;
+      step_index?: number;
+      coordinates: [number, number][];
+      distance_meters?: number;
+      duration_seconds?: number;
+      duration_in_traffic_seconds?: number;
+      instruction?: string;
+      travel_mode?: string;
+    }>;
+    threshold_meters?: number;
+    max_crashes_per_segment?: number;
+  }) {
+    const response = await fetch(`${API_BASE_URL}/crash-proximity`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+    return response.json();
+  },
 };

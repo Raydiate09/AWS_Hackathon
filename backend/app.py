@@ -5,11 +5,138 @@ import os
 import json
 from dotenv import load_dotenv
 from datetime import datetime, timezone, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from tomtom_service import get_tomtom_route
 from google_maps_service import get_google_maps_route
 from sunlight_service import calculate_sunlight_risk, calculate_driving_bearing, analyze_route_sunlight_risk
 import csv
+from shapely.geometry import LineString, Point
+from shapely.strtree import STRtree
+from pyproj import Transformer
+
+
+CRASH_DATASET_PATH = os.path.join(os.path.dirname(__file__), "..", "crashdata2022-present.csv")
+PROJECT_TRANSFORMER = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
+CRASH_GEOMETRIES: List[Point] = []
+CRASH_METADATA: List[Dict[str, Any]] = []
+CRASH_TREE: Optional[STRtree] = None
+CRASH_GEOM_INDEX: Dict[int, int] = {}
+
+
+def _parse_float(value: Any) -> Optional[float]:
+    if value in (None, ""):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_int(value: Any) -> int:
+    if value in (None, ""):
+        return 0
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _parse_bool(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() == "true"
+
+
+def _parse_optional_int(value: Any) -> Optional[int]:
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _ensure_crash_spatial_index() -> None:
+    global CRASH_TREE, CRASH_GEOMETRIES, CRASH_METADATA, CRASH_GEOM_INDEX
+
+    if CRASH_TREE is not None and CRASH_GEOMETRIES and CRASH_METADATA and CRASH_GEOM_INDEX:
+        return
+
+    if not os.path.exists(CRASH_DATASET_PATH):
+        raise FileNotFoundError("Crash dataset not found at path: " + CRASH_DATASET_PATH)
+
+    crash_points: List[Point] = []
+    metadata: List[Dict[str, Any]] = []
+
+    with open(CRASH_DATASET_PATH, newline="", encoding="utf-8") as csv_file:
+        reader = csv.DictReader(csv_file)
+        for row in reader:
+            lat = _parse_float(row.get("Latitude"))
+            lon = _parse_float(row.get("Longitude"))
+
+            if lat is None or lon is None:
+                continue
+
+            x, y = PROJECT_TRANSFORMER.transform(lon, lat)
+            geom = Point(x, y)
+            crash_points.append(geom)
+
+            fatal = _parse_int(row.get("FatalInjuries"))
+            severe = _parse_int(row.get("SevereInjuries"))
+            moderate = _parse_int(row.get("ModerateInjuries"))
+            minor = _parse_int(row.get("MinorInjuries"))
+
+            metadata.append({
+                "crash_fact_id": row.get("CrashFactId"),
+                "name": row.get("Name"),
+                "crash_datetime": row.get("CrashDateTime"),
+                "collision_type": row.get("CollisionType"),
+                "primary_factor": row.get("PrimaryCollisionFactor"),
+                "lighting": row.get("Lighting"),
+                "weather": row.get("Weather"),
+                "a_street": row.get("AStreetName"),
+                "b_street": row.get("BStreetName"),
+                "latitude": lat,
+                "longitude": lon,
+                "fatal_injuries": fatal,
+                "severe_injuries": severe,
+                "moderate_injuries": moderate,
+                "minor_injuries": minor,
+                "total_injuries": fatal + severe + moderate + minor,
+                "speeding_flag": _parse_bool(row.get("SpeedingFlag")),
+                "hit_and_run_flag": _parse_bool(row.get("HitAndRunFlag")),
+            })
+
+    CRASH_GEOMETRIES = crash_points
+    CRASH_METADATA = metadata
+
+    if crash_points:
+        CRASH_TREE = STRtree(crash_points)
+        CRASH_GEOM_INDEX = {id(geom): idx for idx, geom in enumerate(crash_points)}
+    else:
+        CRASH_TREE = None
+        CRASH_GEOM_INDEX = {}
+
+
+def _project_segment_coordinates(coords: List[List[float]]) -> Optional[LineString]:
+    projected: List[Tuple[float, float]] = []
+    for coord in coords:
+        if not isinstance(coord, (list, tuple)) or len(coord) != 2:
+            continue
+        lon, lat = coord
+        lon_f = _parse_float(lon)
+        lat_f = _parse_float(lat)
+        if lon_f is None or lat_f is None:
+            continue
+        x, y = PROJECT_TRANSFORMER.transform(lon_f, lat_f)
+        projected.append((x, y))
+
+    if len(projected) < 2:
+        return None
+
+    return LineString(projected)
 
 load_dotenv()
 
@@ -388,10 +515,180 @@ def google_maps_route():
             "error": str(e)
         }), 500
 
+
+@app.route('/api/crash-proximity', methods=['POST'])
+def analyze_crash_proximity():
+    """Identify route segments that are close to historic crash incidents using spatial analysis."""
+    try:
+        payload = request.get_json(silent=True) or {}
+        segments_input = payload.get('segments', [])
+        threshold_meters = payload.get('threshold_meters', 200)
+        max_crashes_per_segment = payload.get('max_crashes_per_segment', 5)
+
+        try:
+            threshold_meters = float(threshold_meters)
+        except (TypeError, ValueError):
+            return jsonify({
+                "success": False,
+                "error": "threshold_meters must be a number"
+            }), 400
+
+        try:
+            max_crashes_per_segment = int(max_crashes_per_segment)
+        except (TypeError, ValueError):
+            return jsonify({
+                "success": False,
+                "error": "max_crashes_per_segment must be an integer"
+            }), 400
+
+        if not isinstance(segments_input, list) or len(segments_input) == 0:
+            return jsonify({
+                "success": False,
+                "error": "segments array is required"
+            }), 400
+
+        _ensure_crash_spatial_index()
+
+        if CRASH_TREE is None or not CRASH_GEOMETRIES:
+            return jsonify({
+                "success": False,
+                "error": "Crash dataset is not available"
+            }), 500
+
+        total_segments = 0
+        segments_with_crashes = 0
+        total_close_crashes = 0
+        segment_results: List[Dict[str, Any]] = []
+        leg_summary: Dict[int, Dict[str, Any]] = {}
+
+        for segment in segments_input:
+            coords = segment.get('coordinates') or []
+            line = _project_segment_coordinates(coords)
+            if line is None or line.length == 0:
+                continue
+
+            total_segments += 1
+
+            buffer_geom = line.buffer(threshold_meters)
+            candidate_points = CRASH_TREE.query(buffer_geom)
+
+            close_crashes: List[Dict[str, Any]] = []
+            for geom in candidate_points:
+                crash_idx = CRASH_GEOM_INDEX.get(id(geom))
+                if crash_idx is None:
+                    continue
+
+                crash_info = CRASH_METADATA[crash_idx]
+                distance = geom.distance(line)
+
+                if distance <= threshold_meters:
+                    close_crashes.append({
+                        "crash_fact_id": crash_info.get("crash_fact_id"),
+                        "name": crash_info.get("name"),
+                        "latitude": crash_info.get("latitude"),
+                        "longitude": crash_info.get("longitude"),
+                        "distance_meters": round(distance, 2),
+                        "crash_datetime": crash_info.get("crash_datetime"),
+                        "collision_type": crash_info.get("collision_type"),
+                        "primary_factor": crash_info.get("primary_factor"),
+                        "lighting": crash_info.get("lighting"),
+                        "weather": crash_info.get("weather"),
+                        "a_street": crash_info.get("a_street"),
+                        "b_street": crash_info.get("b_street"),
+                        "fatal_injuries": crash_info.get("fatal_injuries"),
+                        "severe_injuries": crash_info.get("severe_injuries"),
+                        "moderate_injuries": crash_info.get("moderate_injuries"),
+                        "minor_injuries": crash_info.get("minor_injuries"),
+                        "total_injuries": crash_info.get("total_injuries"),
+                        "speeding_flag": crash_info.get("speeding_flag"),
+                        "hit_and_run_flag": crash_info.get("hit_and_run_flag"),
+                    })
+
+            if not close_crashes:
+                leg_index_val = _parse_optional_int(segment.get('leg_index'))
+                if leg_index_val is not None:
+                    leg_entry = leg_summary.setdefault(leg_index_val, {
+                        "leg_index": leg_index_val,
+                        "segment_count": 0,
+                        "segments_with_crashes": 0,
+                        "total_close_crashes": 0,
+                        "min_distance_meters": None,
+                    })
+                    leg_entry["segment_count"] += 1
+                continue
+
+            close_crashes.sort(key=lambda item: item["distance_meters"])
+            if max_crashes_per_segment > 0:
+                close_crashes = close_crashes[:max_crashes_per_segment]
+
+            min_distance = close_crashes[0]["distance_meters"] if close_crashes else None
+
+            segments_with_crashes += 1
+            total_close_crashes += len(close_crashes)
+
+            leg_index_val = _parse_optional_int(segment.get('leg_index'))
+            step_index_val = _parse_optional_int(segment.get('step_index'))
+
+            segment_result = {
+                "leg_index": leg_index_val,
+                "step_index": step_index_val,
+                "instruction": segment.get('instruction'),
+                "travel_mode": segment.get('travel_mode'),
+                "distance_meters": segment.get('distance_meters'),
+                "duration_seconds": segment.get('duration_seconds'),
+                "duration_in_traffic_seconds": segment.get('duration_in_traffic_seconds'),
+                "close_crash_count": len(close_crashes),
+                "min_distance_meters": min_distance,
+                "close_crashes": close_crashes,
+            }
+
+            segment_results.append(segment_result)
+
+            if leg_index_val is not None:
+                leg_entry = leg_summary.setdefault(leg_index_val, {
+                    "leg_index": leg_index_val,
+                    "segment_count": 0,
+                    "segments_with_crashes": 0,
+                    "total_close_crashes": 0,
+                    "min_distance_meters": None,
+                })
+                leg_entry["segment_count"] += 1
+                leg_entry["segments_with_crashes"] += 1
+                leg_entry["total_close_crashes"] += len(close_crashes)
+                current_min = leg_entry.get("min_distance_meters")
+                if current_min is None or (min_distance is not None and min_distance < current_min):
+                    leg_entry["min_distance_meters"] = min_distance
+
+        response_payload = {
+            "success": True,
+            "threshold_meters": threshold_meters,
+            "segment_count": total_segments,
+            "segments_with_crashes": segments_with_crashes,
+            "total_close_crashes": total_close_crashes,
+            "segments": segment_results,
+            "legs_summary": sorted(leg_summary.values(), key=lambda item: item["leg_index"])
+        }
+
+        return jsonify(response_payload)
+
+    except FileNotFoundError as file_err:
+        return jsonify({
+            "success": False,
+            "error": str(file_err)
+        }), 500
+    except Exception as exc:
+        print(f"Crash proximity analysis error: {exc}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "success": False,
+            "error": str(exc)
+        }), 500
+
 @app.route('/api/crash-data', methods=['GET'])
 def get_crash_data():
     try:
-        with open('../crashdata2022-present.csv', 'r') as f:
+        with open(CRASH_DATASET_PATH, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             records = list(reader)[:100]
         return jsonify({

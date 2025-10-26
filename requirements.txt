@@ -17,3 +17,7 @@ requests==2.31.0
 # Timezone Support
 timezonefinder==6.5.0
 pytz==2024.1
+
+# Spatial Analysis
+shapely==2.0.4
+pyproj==3.6.1

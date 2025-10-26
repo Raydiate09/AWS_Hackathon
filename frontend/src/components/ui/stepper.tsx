@@ -116,17 +116,7 @@ export async function getSegmentRiskScore(segment: StepperSegmentInfo): Promise<
     }
   }
 
-  // Basic heuristic weighting segment distance, time, speed, and travel mode.
-  const distanceScore = Math.min(distanceMeters / 100, 40)
-  const durationScore = Math.min(durationSeconds / 30, 40)
-  const averageSpeedMps = durationSeconds > 0 ? distanceMeters / durationSeconds : 0
-  const averageSpeedMph = averageSpeedMps * 2.23694
-  const speedScore = averageSpeedMph > 45 ? Math.min((averageSpeedMph - 45) / 5 * 5, 15) : 0
-
-  const mode = segment.travel_mode?.toLowerCase()
-  const modeAdjustment = mode === "driving" ? 5 : mode === "cycling" ? 3 : mode === "walking" ? 1 : 2
-
-  let rawScore = distanceScore * 0.4 + durationScore * 0.3 + speedScore * 0.2 + modeAdjustment
+  let rawScore = 0
   let leftTurnRisk = false
 
   // Add risk for left turns

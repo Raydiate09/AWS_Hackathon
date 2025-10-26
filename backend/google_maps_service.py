@@ -165,7 +165,8 @@ def get_google_maps_route(
                     "duration_in_traffic_seconds": step.get("duration_in_traffic", {}).get("value"),
                     "instruction": step.get("html_instructions", ""),
                     "travel_mode": step.get("travel_mode", "DRIVING"),
-                    "step_index": step_index
+                    "step_index": step_index,
+                    "leg_index": leg_index
                 })
             legs_data.append({
                 "leg_index": leg_index,

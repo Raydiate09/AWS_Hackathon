@@ -4,8 +4,10 @@ import boto3
 import os
 import json
 from dotenv import load_dotenv
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from typing import Any, Dict, List, Optional
 from tomtom_service import get_tomtom_route
+from google_maps_service import get_google_maps_route
 from sunlight_service import calculate_sunlight_risk, calculate_driving_bearing, analyze_route_sunlight_risk
 import csv
 
@@ -55,6 +57,65 @@ def invoke_claude(prompt):
         import traceback
         traceback.print_exc()
         return f"Error generating AI response: {str(e)}"
+
+
+def create_route_segments_from_coordinates(
+    coordinates: List[List[float]],
+    total_duration_seconds: int
+) -> List[Dict[str, Any]]:
+    """Create simple route segments from coordinate pairs with estimated durations."""
+    if len(coordinates) < 2:
+        return []
+
+    segment_count = len(coordinates) - 1
+    base_duration = total_duration_seconds // segment_count if total_duration_seconds else 0
+
+    segments: List[Dict[str, Any]] = []
+    for idx in range(segment_count):
+        start = coordinates[idx]
+        end = coordinates[idx + 1]
+        segments.append({
+            "name": f"Segment {idx + 1}",
+            "from_lat": start[1],
+            "from_lng": start[0],
+            "to_lat": end[1],
+            "to_lng": end[0],
+            "duration_seconds": base_duration or 0
+        })
+
+    return segments
+
+
+class DriverScheduleOptimizer:
+    """Minimal placeholder optimizer that returns a basic driving schedule."""
+
+    def optimize_schedule(
+        self,
+        segments: List[Dict[str, Any]],
+        departure_time: datetime,
+        preferred_arrival: Optional[datetime] = None
+    ) -> Dict[str, Any]:
+        schedule_segments: List[Dict[str, Any]] = []
+        current_time = departure_time
+
+        for segment in segments:
+            duration_seconds = segment.get("duration_seconds", 0)
+            next_time = current_time + timedelta(seconds=duration_seconds)
+            schedule_segments.append({
+                "segment_name": segment.get("name", "Segment"),
+                "start_time": current_time.isoformat(),
+                "end_time": next_time.isoformat(),
+                "duration_seconds": duration_seconds
+            })
+            current_time = next_time
+
+        arrival_time = preferred_arrival.isoformat() if preferred_arrival else current_time.isoformat()
+
+        return {
+            "departure_time": departure_time.isoformat(),
+            "estimated_arrival": arrival_time,
+            "segments": schedule_segments
+        }
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
@@ -271,6 +332,62 @@ def tomtom_route():
             "error": str(e)
         }), 500
 
+
+@app.route('/api/google-maps-route', methods=['POST'])
+def google_maps_route():
+    """Get optimized route details from Google Maps Directions API."""
+    try:
+        data = request.get_json(silent=True) or {}
+        print(f"Google Maps route request: {data}")
+
+        route = data.get('route', {})
+        origin = route.get('origin', {}).get('coordinates', {})
+        destination = route.get('destination', {}).get('coordinates', {})
+        stops = route.get('stops', [])
+
+        preferred_departure = data.get('preferred_start_time') or data.get('preferred_departure_time')
+
+        if not all([
+            origin.get('lat'), origin.get('lng'),
+            destination.get('lat'), destination.get('lng')
+        ]):
+            return jsonify({
+                "success": False,
+                "error": "Origin and destination coordinates are required"
+            }), 400
+
+        result = get_google_maps_route(
+            origin_lat=origin.get('lat'),
+            origin_lng=origin.get('lng'),
+            dest_lat=destination.get('lat'),
+            dest_lng=destination.get('lng'),
+            waypoints=stops,
+            departure_time=preferred_departure
+        )
+
+        if result.get('success'):
+            return jsonify({
+                "success": True,
+                "coordinates": result.get('coordinates', []),
+                "summary": result.get('summary', {}),
+                "segments": result.get('segments', []),
+                "legs": result.get('legs', [])
+            })
+
+        return jsonify({
+            "success": False,
+            "error": result.get('error', 'Unknown error')
+        }), 500
+
+    except Exception as e:
+        print(f"Error in google_maps_route: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
 @app.route('/api/crash-data', methods=['GET'])
 def get_crash_data():
     try:
@@ -301,7 +418,7 @@ def calculate_route_sunlight_risk():
     }
     """
     try:
-        data = request.json
+        data = request.get_json(silent=True) or {}
         
         origin = data.get('origin', {})
         destination = data.get('destination', {})
@@ -420,7 +537,7 @@ def optimize_driver_schedule():
     }
     """
     try:
-        data = request.json
+        data = request.get_json(silent=True) or {}
         
         route_coords = data.get('route_coordinates', [])
         total_duration = data.get('total_duration_seconds', 0)

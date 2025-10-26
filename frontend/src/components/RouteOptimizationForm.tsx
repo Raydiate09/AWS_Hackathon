@@ -9,6 +9,8 @@ interface RouteOptimizationFormProps {
     destination: Location;
     stops: Location[];
     routeCoordinates?: [number, number][];
+    legs?: GoogleRouteLeg[];
+    segments?: GoogleRouteSegment[];
   }) => void;
 }
 
@@ -19,14 +21,38 @@ interface GoogleRouteSummary {
   waypoint_order?: number[];
 }
 
+interface GoogleRouteLeg {
+  leg_index: number;
+  start_address: string;
+  end_address: string;
+  start_location: { lat: number; lng: number };
+  end_location: { lat: number; lng: number };
+  distance_meters: number;
+  duration_seconds: number;
+  duration_in_traffic_seconds?: number;
+  steps_count: number;
+  coordinates: [number, number][];
+}
+
+interface GoogleRouteSegment {
+  leg_index: number;
+  step_index: number;
+  coordinates: [number, number][];
+  distance_meters: number;
+  duration_seconds: number;
+  duration_in_traffic_seconds?: number;
+  instruction: string;
+  travel_mode: string;
+}
+
 interface GoogleRouteResponse {
   success: boolean;
   coordinates: [number, number][];
   summary?: GoogleRouteSummary;
   error?: string;
   message?: string;
-  segments?: unknown;
-  legs?: unknown;
+  segments?: GoogleRouteSegment[];
+  legs?: GoogleRouteLeg[];
 }
 
 interface SunlightSegment {
@@ -167,7 +193,7 @@ export function RouteOptimizationForm({ onRouteOptimized }: RouteOptimizationFor
   const handleGoogleMapsRoute = async () => {
     setRouteLoading(true);
     setError(null);
-    setRouteResult(null);
+  setRouteResult(null);
     setSunlightResult(null);
 
     try {
@@ -249,7 +275,9 @@ export function RouteOptimizationForm({ onRouteOptimized }: RouteOptimizationFor
           origin,
           destination,
           stops,
-          routeCoordinates: response.coordinates
+          routeCoordinates: response.coordinates,
+          legs: response.legs,
+          segments: response.segments
         });
       }
     } catch (err) {

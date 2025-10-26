@@ -15,6 +15,30 @@ import {
 import MapboxExample from "@/components/MapboxExample";
 import { RouteOptimizationForm } from "@/components/RouteOptimizationForm";
 
+type RouteLeg = {
+  leg_index: number;
+  start_address: string;
+  end_address: string;
+  start_location: { lat: number; lng: number };
+  end_location: { lat: number; lng: number };
+  distance_meters: number;
+  duration_seconds: number;
+  duration_in_traffic_seconds?: number;
+  steps_count: number;
+  coordinates: [number, number][];
+};
+
+type RouteSegment = {
+  leg_index: number;
+  step_index: number;
+  coordinates: [number, number][];
+  distance_meters: number;
+  duration_seconds: number;
+  duration_in_traffic_seconds?: number;
+  instruction: string;
+  travel_mode: string;
+};
+
 export function CalendarRangeDemo() {
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: new Date(),
@@ -35,21 +59,98 @@ export function CalendarRangeDemo() {
 function StepperDemo({ 
   origin, 
   destination, 
-  stops = [] 
+  stops = [],
+  legs = [],
+  segments = []
 }: {
   origin?: { address: string; coordinates: { lat: number; lng: number } };
   destination?: { address: string; coordinates: { lat: number; lng: number } };
   stops?: { address: string; coordinates: { lat: number; lng: number } }[];
+  legs?: RouteLeg[];
+  segments?: RouteSegment[];
 }) {
   const [currentStep, setCurrentStep] = useState(1);
 
   // Reset to step 1 when route changes
   useEffect(() => {
     setCurrentStep(1);
-  }, [origin?.address, destination?.address, stops?.length]);
+  }, [origin?.address, destination?.address, stops?.length, legs?.length, segments?.length]);
 
   // Generate dynamic steps based on actual route
   const generateSteps = () => {
+    const formatAddress = (address?: string) => {
+      if (!address) return "Waypoint";
+      const [label] = address.split(",");
+      return label || address;
+    };
+
+    if (legs && legs.length > 0) {
+      const combined: {
+        kind: "leg" | "segment";
+        leg: RouteLeg;
+        segment?: RouteSegment;
+      }[] = [];
+
+      legs.forEach((leg) => {
+        combined.push({ kind: "leg", leg });
+        const legSegments = (segments || []).filter((segment) => segment.leg_index === leg.leg_index);
+        legSegments.forEach((segment) => {
+          combined.push({ kind: "segment", leg, segment });
+        });
+      });
+
+      return combined.map((entry, index) => {
+        if (entry.kind === "leg") {
+          const distanceMiles = entry.leg.distance_meters ? entry.leg.distance_meters * 0.000621371 : 0;
+          const durationSeconds = entry.leg.duration_in_traffic_seconds ?? entry.leg.duration_seconds ?? 0;
+          const durationMinutes = durationSeconds ? Math.round(durationSeconds / 60) : 0;
+          const descriptionParts: string[] = [];
+
+          if (distanceMiles > 0) {
+            descriptionParts.push(`${distanceMiles.toFixed(1)} mi`);
+          }
+          if (durationMinutes > 0) {
+            descriptionParts.push(`${durationMinutes} min`);
+          }
+
+          return {
+            step: index + 1,
+            title: `Leg ${entry.leg.leg_index + 1}: ${formatAddress(entry.leg.start_address)} → ${formatAddress(entry.leg.end_address)}`,
+            description: descriptionParts.length > 0
+              ? descriptionParts.join(" • ")
+              : "Distance and duration unavailable",
+          };
+        }
+
+        const segment = entry.segment!;
+        const segmentDistanceMiles = segment.distance_meters ? segment.distance_meters * 0.000621371 : 0;
+        const segmentDurationSeconds = segment.duration_in_traffic_seconds ?? segment.duration_seconds ?? 0;
+        const segmentDurationMinutes = segmentDurationSeconds ? Math.round(segmentDurationSeconds / 60) : 0;
+
+        const instruction = segment.instruction
+          .replace(/<[^>]+>/g, "")
+          .replace(/&nbsp;/g, " ")
+          .trim();
+
+        const segmentParts: string[] = [];
+        if (instruction) {
+          segmentParts.push(instruction);
+        }
+        if (segmentDistanceMiles > 0) {
+          segmentParts.push(`${segmentDistanceMiles.toFixed(1)} mi`);
+        }
+        if (segmentDurationMinutes > 0) {
+          segmentParts.push(`${segmentDurationMinutes} min`);
+        }
+
+        return {
+          step: index + 1,
+          title: `Segment ${segment.step_index + 1}`,
+          description: segmentParts.length > 0 ? segmentParts.join(" • ") : "Segment details unavailable",
+        };
+      });
+    }
+
     const steps = [];
     let stepNumber = 1;
 
@@ -88,7 +189,7 @@ function StepperDemo({
         {
           step: 1,
           title: "No Route Selected",
-          description: "Please enter origin and destination to see delivery progress",
+          description: "Please enter origin and destination to see steps",
         }
       ];
     }
@@ -212,6 +313,8 @@ function App() {
     destination?: { address: string; coordinates: { lat: number; lng: number } };
     stops?: { address: string; coordinates: { lat: number; lng: number } }[];
     routeCoordinates?: [number, number][]; // TomTom optimized route
+    legs?: RouteLeg[];
+    segments?: RouteSegment[];
   }>({});
 
   const handleRouteOptimized = (route: {
@@ -219,6 +322,8 @@ function App() {
     destination: { address: string; coordinates: { lat: number; lng: number } };
     stops: { address: string; coordinates: { lat: number; lng: number } }[];
     routeCoordinates?: [number, number][];
+    legs?: RouteLeg[];
+    segments?: RouteSegment[];
   }) => {
     setRouteData(route);
   };
@@ -256,11 +361,13 @@ function App() {
       </div>
 
       <div className="p-6">
-        <h2 className="text-2xl font-bold mb-4">Delivery Progress</h2>
+        <h2 className="text-2xl font-bold mb-4">Steps</h2>
         <StepperDemo 
           origin={routeData.origin}
           destination={routeData.destination}
           stops={routeData.stops}
+          legs={routeData.legs}
+          segments={routeData.segments}
         />
       </div>
 
